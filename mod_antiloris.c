@@ -1,5 +1,5 @@
 /*
-   mod_noslow 0.1
+   mod_antiloris 0.1
    Copyright (C) 2008 Monshouwer Internet Diensten
    Author: Kees Monshouwer
 
@@ -27,19 +27,19 @@
 #include "apr_strings.h"
 #include "scoreboard.h"
 
-#define MODULE_NAME "mod_noslow"
+#define MODULE_NAME "mod_antiloris"
 #define MODULE_VERSION "0.1"
 
-module AP_MODULE_DECLARE_DATA noslow_module;
+module AP_MODULE_DECLARE_DATA antiloris_module;
 
 static int server_limit, thread_limit;
 
-#define NOSLOW_MAX_PER_IP	5
+#define antiloris_MAX_PER_IP	5
 
 typedef struct
 {
     signed int limit;
-} noslow_config;
+} antiloris_config;
 
 typedef struct {
     int child_num;
@@ -50,9 +50,9 @@ typedef struct {
 /* Create per-server configuration structure */
 static void *create_config(apr_pool_t *p, server_rec *s)
 {
-    noslow_config *conf = apr_pcalloc(p, sizeof (*conf));
+    antiloris_config *conf = apr_pcalloc(p, sizeof (*conf));
 
-    conf->limit = NOSLOW_MAX_PER_IP;
+    conf->limit = antiloris_MAX_PER_IP;
     return conf;
 }
                                                        
@@ -60,7 +60,7 @@ static void *create_config(apr_pool_t *p, server_rec *s)
 /* Parse the IPReadLimit directive */
 static const char *limit_config_cmd(cmd_parms *parms, void *mconfig, const char *arg)
 {
-    noslow_config *conf = ap_get_module_config(parms->server->module_config, &noslow_module);
+    antiloris_config *conf = ap_get_module_config(parms->server->module_config, &antiloris_module);
     const char *err = ap_check_cmd_context (parms, GLOBAL_ONLY);
     
     if (err != NULL) {
@@ -81,7 +81,7 @@ static const char *limit_config_cmd(cmd_parms *parms, void *mconfig, const char 
 
 
 /* Array describing structure of configuration directives */
-static command_rec noslow_cmds[] = {
+static command_rec antiloris_cmds[] = {
     AP_INIT_TAKE1("IPReadLimit", limit_config_cmd, NULL, RSRC_CONF, "Maximum simultaneous connections in READ state per IP address"),
     {NULL}
 };
@@ -97,7 +97,7 @@ static int limitipconn_init(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, 
 
 static int pre_connection(conn_rec *c)
 {
-    noslow_config *conf = ap_get_module_config (c->base_server->module_config,  &noslow_module);
+    antiloris_config *conf = ap_get_module_config (c->base_server->module_config,  &antiloris_module);
     sb_handle *sbh = c->sbh;
     
     /* loop index variables */
@@ -144,12 +144,12 @@ static void register_hooks(apr_pool_t *p)
     
 }
 
-module AP_MODULE_DECLARE_DATA noslow_module = {
+module AP_MODULE_DECLARE_DATA antiloris_module = {
     STANDARD20_MODULE_STUFF,
     NULL,			/* create per-dir config structures */
     NULL,			/* merge  per-dir    config structures */
     create_config,		/* create per-server config structures */
     NULL,			/* merge  per-server config structures */
-    noslow_cmds,		/* table of config file commands       */
+    antiloris_cmds,		/* table of config file commands       */
     register_hooks
 };
