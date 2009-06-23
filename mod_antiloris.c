@@ -1,6 +1,7 @@
 /*
-   mod_antiloris 0.1
+   mod_antiloris 0.2
    Copyright (C) 2008 Monshouwer Internet Diensten
+
    Author: Kees Monshouwer
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,17 +19,14 @@
 
 #include "httpd.h"
 #include "http_config.h"
-#include "http_protocol.h"
 #include "http_connection.h"
-#include "http_core.h"
-#include "http_main.h"
 #include "http_log.h"
 #include "ap_mpm.h"
 #include "apr_strings.h"
 #include "scoreboard.h"
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.1"
+#define MODULE_VERSION "0.2"
 
 module AP_MODULE_DECLARE_DATA antiloris_module;
 
@@ -86,6 +84,7 @@ static command_rec antiloris_cmds[] = {
     {NULL}
 };
 
+
 /* Set up startup-time initialization */
 static int limitipconn_init(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
@@ -137,11 +136,17 @@ static int pre_connection(conn_rec *c)
 }
 
 
+static void child_init (apr_pool_t *p, server_rec *s)
+{
+    ap_add_version_component(p, MODULE_NAME "/" MODULE_VERSION);
+}
+
+
 static void register_hooks(apr_pool_t *p)
 {
     ap_hook_post_config(limitipconn_init, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_process_connection(pre_connection, NULL, NULL, APR_HOOK_FIRST);
-    
+    ap_hook_child_init(child_init, NULL, NULL, APR_HOOK_MIDDLE);    
 }
 
 module AP_MODULE_DECLARE_DATA antiloris_module = {
