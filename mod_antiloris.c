@@ -1,6 +1,8 @@
 /*
    mod_antiloris 0.2
    Copyright (C) 2008 Monshouwer Internet Diensten
+   
+	http://www.monshouwer.eu/
 
    Author: Kees Monshouwer
 
@@ -26,7 +28,7 @@
 #include "scoreboard.h"
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.2"
+#define MODULE_VERSION "0.3"
 
 module AP_MODULE_DECLARE_DATA antiloris_module;
 
@@ -88,6 +90,19 @@ static command_rec antiloris_cmds[] = {
 /* Set up startup-time initialization */
 static int limitipconn_init(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
+    void *data;
+    const char *userdata_key = "antiloris_init";
+    
+    /* initialize_module() will be called twice, and if it's a DSO
+     * then all static data from the first call will be lost. Only
+     * set up our static data on the second call. */
+    apr_pool_userdata_get(&data, userdata_key, s->process->pool);
+    if (!data) {
+	apr_pool_userdata_set((const void *)1, userdata_key,apr_pool_cleanup_null, s->process->pool);
+	return OK;
+    }
+
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, MODULE_NAME " " MODULE_VERSION " started");
     ap_mpm_query(AP_MPMQ_HARD_LIMIT_THREADS, &thread_limit);
     ap_mpm_query(AP_MPMQ_HARD_LIMIT_DAEMONS, &server_limit);
     return OK;
@@ -128,7 +143,7 @@ static int pre_connection(conn_rec *c)
     }
     
     if (ip_count > conf->limit) {
-    ap_log_error(APLOG_MARK, APLOG_ERR, 0, NULL, "Rejected, too many connections in READ state from %s", c->remote_ip);
+	ap_log_error(APLOG_MARK, APLOG_WARNING, 0, NULL, "Rejected, too many connections in READ state from %s", c->remote_ip);
 	return OK;
     } else {
 	return DECLINED;

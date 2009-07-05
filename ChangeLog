@@ -1,11 +1,12 @@
-0.2
-
+0.3 24 jun 2009 - 13:00
     * BUGFIX: None.
-    
+    * NEW:    Output module information to error log on httpd startup.
+    * CHANGE: Changed loglevel to warning.
+
+0.2 24 jun 2009 - 09:00
+    * BUGFIX: None.
     * NEW:    Added module version to signature.	
-    
     * CANGE:  Code cleanup
 
-0.1
-
+0.1 22 jun 2009 - 02:30
     * NEW:    Initial release.
