@@ -1,8 +1,6 @@
 /*
    mod_antiloris 0.2
    Copyright (C) 2008 Monshouwer Internet Diensten
-   
-	http://www.monshouwer.eu/
 
    Author: Kees Monshouwer
 
@@ -28,7 +26,7 @@
 #include "scoreboard.h"
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.3"
+#define MODULE_VERSION "0.4"
 
 module AP_MODULE_DECLARE_DATA antiloris_module;
 
@@ -58,7 +56,7 @@ static void *create_config(apr_pool_t *p, server_rec *s)
                                                        
 
 /* Parse the IPReadLimit directive */
-static const char *limit_config_cmd(cmd_parms *parms, void *mconfig, const char *arg)
+static const char *ipreadlimit_config_cmd(cmd_parms *parms, void *mconfig, const char *arg)
 {
     antiloris_config *conf = ap_get_module_config(parms->server->module_config, &antiloris_module);
     const char *err = ap_check_cmd_context (parms, GLOBAL_ONLY);
@@ -82,13 +80,13 @@ static const char *limit_config_cmd(cmd_parms *parms, void *mconfig, const char 
 
 /* Array describing structure of configuration directives */
 static command_rec antiloris_cmds[] = {
-    AP_INIT_TAKE1("IPReadLimit", limit_config_cmd, NULL, RSRC_CONF, "Maximum simultaneous connections in READ state per IP address"),
+    AP_INIT_TAKE1("IPReadLimit", ipreadlimit_config_cmd, NULL, RSRC_CONF, "Maximum simultaneous connections in READ state per IP address"),
     {NULL}
 };
 
 
 /* Set up startup-time initialization */
-static int limitipconn_init(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
+static int post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
     void *data;
     const char *userdata_key = "antiloris_init";
@@ -120,12 +118,14 @@ static int pre_connection(conn_rec *c)
     
     /* running count of number of connections from this address */
     int ip_count = 0;
-        
+    
     /* scoreboard data structure */
     worker_score *ws_record;
     
     ws_record = &ap_scoreboard_image->servers[sbh->child_num][sbh->thread_num];
     apr_cpystrn(ws_record->client, c->remote_ip, sizeof(ws_record->client));
+    
+    char *client_ip = ws_record->client;
     
     /* Count up the number of connections we are handling right now from this IP address */
     for (i = 0; i < server_limit; ++i) {
@@ -133,7 +133,7 @@ static int pre_connection(conn_rec *c)
     	    ws_record = ap_get_scoreboard_worker(i, j);
             switch (ws_record->status) {
         	case SERVER_BUSY_READ:
-            	    if (strcmp(c->remote_ip, ws_record->client) == 0)
+            	    if (strcmp(client_ip, ws_record->client) == 0)
             		ip_count++;
                     break;
                 default:
@@ -159,7 +159,7 @@ static void child_init (apr_pool_t *p, server_rec *s)
 
 static void register_hooks(apr_pool_t *p)
 {
-    ap_hook_post_config(limitipconn_init, NULL, NULL, APR_HOOK_MIDDLE);
+    ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_process_connection(pre_connection, NULL, NULL, APR_HOOK_FIRST);
     ap_hook_child_init(child_init, NULL, NULL, APR_HOOK_MIDDLE);    
 }
