@@ -1,6 +1,6 @@
 /*
-   mod_antiloris 0.2
-   Copyright (C) 2008 Monshouwer Internet Diensten
+   mod_antiloris 0.4
+   Copyright (C) 2010 Monshouwer Internet Diensten
 
    Author: Kees Monshouwer
 
@@ -15,7 +15,10 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+   
+   Instalation:
+   - /usr/apache/bin/apxs -a -i -l cap -c mod_antiloris.c
+*/
 
 #include "httpd.h"
 #include "http_config.h"
@@ -32,7 +35,7 @@ module AP_MODULE_DECLARE_DATA antiloris_module;
 
 static int server_limit, thread_limit;
 
-#define antiloris_MAX_PER_IP	5
+#define antiloris_MAX_PER_IP	10
 
 typedef struct
 {
