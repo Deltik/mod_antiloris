@@ -1,5 +1,5 @@
 /*
-   mod_antiloris 0.4
+   mod_antiloris 0.5
    Copyright (C) 2010 Monshouwer Internet Diensten
 
    Author: Kees Monshouwer
@@ -29,7 +29,7 @@
 #include "scoreboard.h"
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.4"
+#define MODULE_VERSION "0.5"
 
 module AP_MODULE_DECLARE_DATA antiloris_module;
 
@@ -61,6 +61,8 @@ static void *create_config(apr_pool_t *p, server_rec *s)
 /* Parse the IPReadLimit directive */
 static const char *ipreadlimit_config_cmd(cmd_parms *parms, void *mconfig, const char *arg)
 {
+   signed long int limit;
+
     antiloris_config *conf = ap_get_module_config(parms->server->module_config, &antiloris_module);
     const char *err = ap_check_cmd_context (parms, GLOBAL_ONLY);
     
@@ -68,7 +70,7 @@ static const char *ipreadlimit_config_cmd(cmd_parms *parms, void *mconfig, const
 	return err;
     }
     
-    signed long int limit = strtol(arg, (char **) NULL, 10);
+   limit = strtol(arg, (char **) NULL, 10);
 
     /* No reasonable person would want more than 2^16. Better would be
        to use LONG_MAX but that causes portability problems on win32 */
@@ -83,7 +85,7 @@ static const char *ipreadlimit_config_cmd(cmd_parms *parms, void *mconfig, const
 
 /* Array describing structure of configuration directives */
 static command_rec antiloris_cmds[] = {
-    AP_INIT_TAKE1("IPReadLimit", ipreadlimit_config_cmd, NULL, RSRC_CONF, "Maximum simultaneous connections in READ state per IP address"),
+   AP_INIT_TAKE1("IPReadLimit", ipreadlimit_config_cmd, NULL, RSRC_CONF, "Maximum simultaneous connections per IP address"),
     {NULL}
 };
 
@@ -112,6 +114,8 @@ static int post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, serve
 
 static int pre_connection(conn_rec *c)
 {
+   char *client_ip;
+
     antiloris_config *conf = ap_get_module_config (c->base_server->module_config,  &antiloris_module);
     sb_handle *sbh = c->sbh;
     
@@ -128,7 +132,7 @@ static int pre_connection(conn_rec *c)
     ws_record = &ap_scoreboard_image->servers[sbh->child_num][sbh->thread_num];
     apr_cpystrn(ws_record->client, c->remote_ip, sizeof(ws_record->client));
     
-    char *client_ip = ws_record->client;
+   client_ip = ws_record->client;
     
     /* Count up the number of connections we are handling right now from this IP address */
     for (i = 0; i < server_limit; ++i) {
@@ -136,6 +140,12 @@ static int pre_connection(conn_rec *c)
     	    ws_record = ap_get_scoreboard_worker(i, j);
             switch (ws_record->status) {
         	case SERVER_BUSY_READ:
+        	case SERVER_BUSY_WRITE:
+        	case SERVER_BUSY_KEEPALIVE:
+        	case SERVER_BUSY_DNS:
+        	case SERVER_BUSY_LOG:
+        	case SERVER_CLOSING:
+        	case SERVER_GRACEFUL:
             	    if (strcmp(client_ip, ws_record->client) == 0)
             		ip_count++;
                     break;
@@ -146,7 +156,7 @@ static int pre_connection(conn_rec *c)
     }
     
     if (ip_count > conf->limit) {
-	ap_log_error(APLOG_MARK, APLOG_WARNING, 0, NULL, "Rejected, too many connections in READ state from %s", c->remote_ip);
+	ap_log_error(APLOG_MARK, APLOG_WARNING, 0, NULL, "[client %s] Antiloris rejected, too many connections", c->remote_ip);
 	return OK;
     } else {
 	return DECLINED;
