@@ -1,6 +1,6 @@
 /*
    mod_antiloris 0.6.0
-   Copyright (C) 2010 Monshouwer Internet Diensten
+   Copyright (C) 2008-2010 Monshouwer Internet Diensten
 
    Author: Kees Monshouwer
 
@@ -15,9 +15,18 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-   
-   Instalation:
-   - /usr/apache/bin/apxs -a -i -l cap -c mod_antiloris.c
+
+   This file is a Derivative Work with changes from the following contributors:
+
+   - NewEraCracker
+   - diovoemor
+   - Deltik
+*/
+
+/*
+   Installation:
+
+   apxs -a -i -l cap -c mod_antiloris.c
 */
 
 #include "httpd.h"
