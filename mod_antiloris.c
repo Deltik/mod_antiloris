@@ -1,5 +1,5 @@
 /*
-   mod_antiloris 0.6.0
+   mod_antiloris 0.6.1
    Copyright (C) 2008-2010 Monshouwer Internet Diensten
 
    Author: Kees Monshouwer
@@ -16,7 +16,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-   This file is a Derivative Work with changes from the following contributors:
+   This file is a Derivative Work with changes from the following Contributors:
 
    - NewEraCracker
    - diovoemor
@@ -36,8 +36,11 @@
 #include "scoreboard.h"
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.6.0"
-#define ANTILORIS_DEFAULT_MAX_CONN_PER_TYPE 10
+#define MODULE_VERSION "0.6.1"
+#define ANTILORIS_DEFAULT_MAX_CONN_TOTAL 30
+#define ANTILORIS_DEFAULT_MAX_CONN_READ 10
+#define ANTILORIS_DEFAULT_MAX_CONN_WRITE 10
+#define ANTILORIS_DEFAULT_MAX_CONN_OTHER 10
 
 #ifdef APLOG_USE_MODULE
 APLOG_USE_MODULE(antiloris);
@@ -54,12 +57,13 @@ static int server_limit, thread_limit;
 
 typedef struct {
     /* IP Connection Limits */
+    signed long int total_limit;
     signed long int read_limit;
     signed long int write_limit;
     signed long int other_limit;
 
-    /* Local IP Addresses */
-    apr_array_header_t *local_ips;
+    /* Whitelist IP Addresses */
+    apr_array_header_t *whitelist_ips;
 } antiloris_config;
 
 typedef struct {
@@ -71,96 +75,92 @@ typedef struct {
 static void *create_config(apr_pool_t *p, server_rec *s) {
     antiloris_config *conf = apr_pcalloc(p, sizeof(*conf));
 
-    conf->read_limit = ANTILORIS_DEFAULT_MAX_CONN_PER_TYPE;
-    conf->write_limit = ANTILORIS_DEFAULT_MAX_CONN_PER_TYPE;
-    conf->other_limit = ANTILORIS_DEFAULT_MAX_CONN_PER_TYPE;
-    conf->local_ips = apr_array_make(p, 0, sizeof(char *));
+    conf->total_limit = ANTILORIS_DEFAULT_MAX_CONN_TOTAL;
+    conf->read_limit = ANTILORIS_DEFAULT_MAX_CONN_READ;
+    conf->write_limit = ANTILORIS_DEFAULT_MAX_CONN_WRITE;
+    conf->other_limit = ANTILORIS_DEFAULT_MAX_CONN_OTHER;
+    conf->whitelist_ips = apr_array_make(p, 0, sizeof(char *));
 
     return conf;
 }
 
-/** Parse IPReadLimit directive */
-static const char *ip_read_limit_config_cmd(cmd_parms *parms, void *mconfig, const char *arg) {
+/**
+ * Get module config from cmd_parms struct
+ * @param cmd cmd_parms struct
+ * @return antiloris_config struct
+ */
+static antiloris_config *_get_config(cmd_parms *cmd) {
+    return ap_get_module_config(cmd->server->module_config, &antiloris_module);
+}
+
+/**
+ * Set the value of the antiloris_config IP limit type
+ * @param limit_type Pointer to the value of the IP limit type in struct antiloris_config
+ * @param cmd
+ * @param value
+ * @return
+ */
+static const char *_set_ip_limit_config_value(signed long int *limit_type, cmd_parms *cmd, const char *value) {
     signed long int limit;
+    limit = strtol(value, (char **) NULL, 10);
 
-    antiloris_config *conf = ap_get_module_config(parms->server->module_config, &antiloris_module);
-    const char *err = ap_check_cmd_context(parms, GLOBAL_ONLY);
+    const char *err = ap_check_cmd_context(cmd, GLOBAL_ONLY);
+    if (err) return err;
 
-    if (!err) {
-        limit = strtol(arg, (char **) NULL, 10);
+    /* No reasonable person would want more than 2^16. Better would be
+       to use LONG_MAX but that causes portability problems on win32 */
+    if (limit > 65535) { return "Limit can't be higher than 65535"; }
+    if (limit < 0) { return "Limit can't be lower than 0"; }
 
-        /* No reasonable person would want more than 2^16. Better would be
-           to use LONG_MAX but that causes portability problems on win32 */
-        if (limit > 65535) { return "Limit can't be higher than 65535"; }
-        if (limit < 0) { return "Limit can't be lower than zero"; }
+    *limit_type = limit;
 
-        conf->read_limit = limit;
-    }
+    return NULL;
+}
 
-    return err;
+/** Parse IPTotalLimit directive */
+static const char *ip_total_limit_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
+    return _set_ip_limit_config_value(&_get_config(parms)->total_limit, parms, arg);
+}
+
+/** Parse IPReadLimit directive */
+static const char *ip_read_limit_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
+    return _set_ip_limit_config_value(&_get_config(parms)->read_limit, parms, arg);
 }
 
 /** Parse IPWriteLimit directive */
-static const char *ip_write_limit_config_cmd(cmd_parms *parms, void *mconfig, const char *arg) {
-    signed long int limit;
-
-    antiloris_config *conf = ap_get_module_config(parms->server->module_config, &antiloris_module);
-    const char *err = ap_check_cmd_context(parms, GLOBAL_ONLY);
-
-    if (!err) {
-        limit = strtol(arg, (char **) NULL, 10);
-
-        /* No reasonable person would want more than 2^16. Better would be
-           to use LONG_MAX but that causes portability problems on win32 */
-        if (limit > 65535) { return "Limit can't be higher than 65535"; }
-        if (limit < 0) { return "Limit can't be lower than zero"; }
-
-        conf->write_limit = limit;
-    }
-
-    return err;
+static const char *ip_write_limit_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
+    return _set_ip_limit_config_value(&_get_config(parms)->write_limit, parms, arg);
 }
 
 /** Parse IPOtherLimit directive */
-static const char *ip_other_limit_config_cmd(cmd_parms *parms, void *mconfig, const char *arg) {
-    signed long int limit;
-
-    antiloris_config *conf = ap_get_module_config(parms->server->module_config, &antiloris_module);
-    const char *err = ap_check_cmd_context(parms, GLOBAL_ONLY);
-
-    if (!err) {
-        limit = strtol(arg, (char **) NULL, 10);
-
-        /* No reasonable person would want more than 2^16. Better would be
-           to use LONG_MAX but that causes portability problems on win32 */
-        if (limit > 65535) { return "Limit can't be higher than 65535"; }
-        if (limit < 0) { return "Limit can't be lower than zero"; }
-
-        conf->other_limit = limit;
-    }
-
-    return err;
+static const char *ip_other_limit_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
+    return _set_ip_limit_config_value(&_get_config(parms)->other_limit, parms, arg);
 }
 
-/** Parse LocalIPs directive */
-static const char *local_ips_config_cmd(cmd_parms *parms, void *mconfig, const char *arg) {
-    antiloris_config *conf = ap_get_module_config(parms->server->module_config, &antiloris_module);
-
-    *(char **) apr_array_push(conf->local_ips) = apr_pstrdup(parms->pool, arg);
+/** Parse WhitelistIPs/LocalIPs directive */
+static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
+    *(char **) apr_array_push(_get_config(parms)->whitelist_ips) = apr_pstrdup(parms->pool, arg);
 
     return NULL;
 }
 
 /** Configuration directives */
 static command_rec antiloris_cmds[] = {
+        AP_INIT_TAKE1("IPTotalLimit", ip_total_limit_config_cmd, NULL, RSRC_CONF,
+                      "the maximum number of simultaneous connections in any state per IP address"),
         AP_INIT_TAKE1("IPReadLimit", ip_read_limit_config_cmd, NULL, RSRC_CONF,
-                      "Maximum simultaneous connections in READ state per IP address"),
+                      "the maximum number of simultaneous connections in READ state per IP address"),
         AP_INIT_TAKE1("IPWriteLimit", ip_write_limit_config_cmd, NULL, RSRC_CONF,
-                      "Maximum simultaneous connections in WRITE state per IP address"),
+                      "the maximum number of simultaneous connections in WRITE state per IP address"),
         AP_INIT_TAKE1("IPOtherLimit", ip_other_limit_config_cmd, NULL, RSRC_CONF,
-                      "Maximum simultaneous idle connections per IP address"),
-        AP_INIT_ITERATE("LocalIPs", local_ips_config_cmd, NULL, RSRC_CONF,
-                        "List of IPs (separated by spaces) whose connection are always allowed"),
+                      "the maximum number of simultaneous idle connections per IP address"),
+        AP_INIT_ITERATE("LocalIPs", whitelist_ips_config_cmd, NULL, RSRC_CONF,
+                        "a list of IPs (separated by spaces) whose connection are always allowed. "
+                        "The WhitelistIPs directive overrides this one."),
+        AP_INIT_ITERATE("WhitelistIPs", whitelist_ips_config_cmd, NULL, RSRC_CONF,
+                        "a space-delimited list of IPv4 and IPv6 addresses, ranges, or CIDRs "
+                        "which should not be subjected to any limits by mod_antiloris. "
+                        "This directive overrides the LocalIPs directive."),
         {NULL}
 };
 
@@ -214,10 +214,10 @@ static int pre_connection(conn_rec *c) {
     ws_record = &ap_scoreboard_image->servers[sbh->child_num][sbh->thread_num];
     apr_cpystrn(ws_record->client, remote_ip, sizeof(ws_record->client));
 
-    /* Take local IPs in consideration */
-    if (conf->local_ips->nelts) {
-        char **ip = (char **) conf->local_ips->elts;
-        for (i = 0; i < conf->local_ips->nelts; i++) {
+    /* Take whitelist IPs in consideration */
+    if (conf->whitelist_ips->nelts) {
+        char **ip = (char **) conf->whitelist_ips->elts;
+        for (i = 0; i < conf->whitelist_ips->nelts; i++) {
 #if AP_MODULE_MAGIC_AT_LEAST(20050101, 0)
             ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c, "Performing IP check versus: \"%s\"", ip[i]);
 #else

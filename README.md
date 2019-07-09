@@ -84,7 +84,7 @@ The above example mitigates Slowloris DoS attacks by:
 | `IPOtherLimit` | `10` | Maximum simultaneous idle connections per IP address. If set to `0`, this limit does not apply. | `>= 0.6` |
 | `IPReadLimit` | `10` | Maximum simultaneous connections in READ state per IP address. If set to `0`, this limit does not apply. | `>= 0.6` |
 | `IPWriteLimit` | `10` | Maximum simultaneous connections in WRITE state per IP address. If set to `0`, this limit does not apply. | `>= 0.6` |
-| `WhitelistIPs` | _none_ | Space-delimited list of [IPv4 and IPv6 addresses, ranges, or CIDRs](#ip-addresses) which should not be subjected to any limits by this module | `>= 0.7` |
+| `WhitelistIPs` | _none_ | Space-delimited list of [IPv4 and IPv6 addresses, ranges, or CIDRs](#ip-addresses) which should not be subjected to any limits by this module.  This directive overrides the value of the `LocalIPs` directive. | `>= 0.7` |
 
 ### Directives from Older Versions
 
