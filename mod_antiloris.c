@@ -50,6 +50,10 @@ APLOG_USE_MODULE(antiloris);
 #define remote_ip client_ip
 #endif
 
+#define READ_COUNT_INDEX 0
+#define WRITE_COUNT_INDEX 1
+#define OTHER_COUNT_INDEX 2
+
 module AP_MODULE_DECLARE_DATA
 antiloris_module;
 
@@ -187,6 +191,24 @@ static int post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, serve
     return OK;
 }
 
+/**
+ * Check if the ip_counts hit any limits in antiloris_config
+ * @param ip_counts Array of connections for an IP address by type
+ * @param conf The configuration struct
+ * @return 1 if a limit has been reached or 0 if no limits have been reached
+ */
+static int _reached_ip_con_limit(signed long int *ip_counts, antiloris_config *conf) {
+    int i, ip_total_count = 0;
+    for (i = 0; i < sizeof(ip_counts) / sizeof(ip_counts[0]); i++)
+        ip_total_count += ip_counts[i];
+    if ((conf->total_limit > 0 && ip_total_count >= conf->total_limit) ||
+        (conf->read_limit > 0 && ip_counts[READ_COUNT_INDEX] >= conf->read_limit) ||
+        (conf->write_limit > 0 && ip_counts[WRITE_COUNT_INDEX] >= conf->write_limit) ||
+        (conf->other_limit > 0 && ip_counts[OTHER_COUNT_INDEX] >= conf->other_limit))
+        return 1;
+    return 0;
+}
+
 /** Our hook at connection processing */
 static int pre_connection(conn_rec *c) {
     /* Remote IP to be used in checking operations */
@@ -196,7 +218,7 @@ static int pre_connection(conn_rec *c) {
     int i = 0, j = 0;
 
     /* running count of number of connections from this address */
-    signed long int ip_read_count = 0, ip_write_count = 0, ip_other_count = 0;
+    signed long int ip_counts[3] = {0};
 
     /* other variables we'll be using */
     antiloris_config *conf = ap_get_module_config(c->base_server->module_config, &antiloris_module);
@@ -246,20 +268,23 @@ static int pre_connection(conn_rec *c) {
 #endif
             switch (ws_record->status) {
                 case SERVER_BUSY_READ:
-                    /* Handle read state if limit is higher than zero */
-                    if (conf->read_limit > 0 && strcmp(remote_ip, ws_record->client) == 0) ip_read_count++;
+                    /* Handle read state */
+                    if (strcmp(remote_ip, ws_record->client) == 0)
+                        ip_counts[READ_COUNT_INDEX]++;
                     break;
                 case SERVER_BUSY_WRITE:
-                    /* Handle write state if limit is higher than zero */
-                    if (conf->write_limit > 0 && strcmp(remote_ip, ws_record->client) == 0) ip_write_count++;
+                    /* Handle write state */
+                    if (strcmp(remote_ip, ws_record->client) == 0)
+                        ip_counts[WRITE_COUNT_INDEX]++;
                     break;
                 case SERVER_BUSY_KEEPALIVE:
                 case SERVER_BUSY_LOG:
                 case SERVER_BUSY_DNS:
                 case SERVER_CLOSING:
                 case SERVER_GRACEFUL:
-                    /* Handle keep-alive state if limit is higher than zero */
-                    if (conf->other_limit > 0 && strcmp(remote_ip, ws_record->client) == 0) ip_other_count++;
+                    /* Handle any other connection state */
+                    if (strcmp(remote_ip, ws_record->client) == 0)
+                        ip_counts[OTHER_COUNT_INDEX]++;
                     break;
                 default:
                     /* Other states are ignored */
@@ -269,7 +294,7 @@ static int pre_connection(conn_rec *c) {
     }
 
     /* Deny the request if it exceeds limits */
-    if (ip_read_count > conf->read_limit || ip_write_count > conf->write_limit || ip_other_count > conf->other_limit) {
+    if (_reached_ip_con_limit(ip_counts, conf)) {
 #if AP_MODULE_MAGIC_AT_LEAST(20050101, 0)
         ap_log_cerror(APLOG_MARK, APLOG_WARNING, 0, c, "Connection rejected by Antiloris, too many connections");
 #else
