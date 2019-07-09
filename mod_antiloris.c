@@ -96,9 +96,9 @@ static antiloris_config *_get_config(cmd_parms *cmd) {
 /**
  * Set the value of the antiloris_config IP limit type
  * @param limit_type Pointer to the value of the IP limit type in struct antiloris_config
- * @param cmd
- * @param value
- * @return
+ * @param cmd Apache instance configuration data
+ * @param value Directive value from configuration
+ * @return Error message as a string, if there was an error
  */
 static const char *_set_ip_limit_config_value(signed long int *limit_type, cmd_parms *cmd, const char *value) {
     signed long int limit;
@@ -254,13 +254,13 @@ static int pre_connection(conn_rec *c) {
                     if (conf->write_limit > 0 && strcmp(remote_ip, ws_record->client) == 0) ip_write_count++;
                     break;
                 case SERVER_BUSY_KEEPALIVE:
-                    /* Handle keep-alive state if limit is higher than zero */
-                    if (conf->other_limit > 0 && strcmp(remote_ip, ws_record->client) == 0) ip_other_count++;
-                    break;
                 case SERVER_BUSY_LOG:
                 case SERVER_BUSY_DNS:
                 case SERVER_CLOSING:
                 case SERVER_GRACEFUL:
+                    /* Handle keep-alive state if limit is higher than zero */
+                    if (conf->other_limit > 0 && strcmp(remote_ip, ws_record->client) == 0) ip_other_count++;
+                    break;
                 default:
                     /* Other states are ignored */
                     break;
