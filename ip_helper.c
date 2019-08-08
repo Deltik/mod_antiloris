@@ -1,5 +1,5 @@
 /*
-   ipv6_playground.c
+   ip_helper.c
    Copyright (C) 2019 Deltik
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,7 @@
 #include <string.h>
 #include <roaring.h>
 #include <apr_hash.h>
-#include "ipv6_playground.h"
+#include "ip_helper.h"
 
 #define ANTILORIS_CONFIG_ERROR_IP_PARSE 255
 #define ANTILORIS_CONFIG_ERROR_IP_CIDR 254

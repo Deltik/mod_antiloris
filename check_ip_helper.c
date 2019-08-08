@@ -1,5 +1,5 @@
 /*
-   check_ipv6_playground.c
+   check_ip_helper.c
    Copyright (C) 2019 Deltik
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <netinet/in.h>
-#include "ipv6_playground.h"
+#include "ip_helper.h"
 
 apr_pool_t *apr_pool;
 
@@ -176,25 +176,17 @@ Suite *playground_suite(void) {
     s = suite_create("Playground");
 
     /* Core test case */
-tc_core = tcase_create("Core");
+    tc_core = tcase_create("Core");
 
-tcase_add_test(tc_core, test_single_ip_whitelist
-);
-tcase_add_test(tc_core, test_single_cidr_whitelist
-);
-tcase_add_test(tc_core, test_single_range_whitelist
-);
-tcase_add_test(tc_core, test_big_range_whitelist
-);
-tcase_add_test(tc_core, test_multiple_whitelist
-);
-tcase_add_test(tc_core, test_for_bugs_in_fill_between_logic
-);
-suite_add_tcase(s, tc_core
-);
+    tcase_add_test(tc_core, test_single_ip_whitelist);
+    tcase_add_test(tc_core, test_single_cidr_whitelist);
+    tcase_add_test(tc_core, test_single_range_whitelist);
+    tcase_add_test(tc_core, test_big_range_whitelist);
+    tcase_add_test(tc_core, test_multiple_whitelist);
+    tcase_add_test(tc_core, test_for_bugs_in_fill_between_logic);
+    suite_add_tcase(s, tc_core);
 
-return
-s;
+    return s;
 }
 
 int main(void) {

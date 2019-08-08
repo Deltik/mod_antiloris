@@ -155,8 +155,8 @@ Here are more examples:
 * `192.168.0.100-192.168.0.200` inclusively matches the IPv4 range `192.168.0.100` to `192.168.0.200`.
 * `10.0.0.0/8` inclusively matches the IPv4 range from `10.0.0.0` to `10.255.255.255`.
 * `::1` matches the individual IPv6 address `0:0:0:0:0:0:0:0001`.
-* `::ffff:ac10:0-::ffff:ac10:8` inclusively matches the IPv6 range `0:0:0:0:0:FFFF:AC10:0` to `0:0:0:0:0:FFFF:AC10:8`.
-* `fd12:3456:789a:1::/64` inclusively matches the IPv6 range `FD12:3456:789A:0001:0:0:0:0` to `FD12:3456:789A:0001:FFFF:FFFF:FFFF:FFFF`.
+* `::ffff:ac10:0-::ffff:ac10:8` inclusively matches the IPv6 range `0:0:0:0:0:ffff:ac10:0` to `0:0:0:0:0:ffff:ac10:8`.
+* `FD12:3456:789A:1::/64` inclusively matches the IPv6 range `fd12:3456:789a:0001:0:0:0:0` to `fd12:3456:789a:0001:ffff:ffff:ffff:ffff`.
 
 ### Versioning
 

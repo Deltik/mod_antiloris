@@ -21,7 +21,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
 include_directories("${PROJECT_SOURCE_DIR}/lib/check")
 add_subdirectory("${PROJECT_SOURCE_DIR}/lib/check")
 
-include_directories("${PROJECT_SOURCE_DIR}/lib/croaring")
+include_directories("${PROJECT_SOURCE_DIR}/lib/croaring/include/roaring")
 add_subdirectory("${PROJECT_SOURCE_DIR}/lib/croaring")
 
 find_program(APXS apxs)
@@ -55,8 +55,9 @@ else (NOT APR)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${APR_C_FLAGS} -I${APR_INCLUDEDIR}")
 endif (NOT APR)
 
-add_executable(mod_antiloris mod_antiloris.c)
-add_executable(ipv6_playground ipv6_playground.c ipv6_playground.h)
-add_executable(check_ipv6_playground check_ipv6_playground.c ipv6_playground.h ipv6_playground.c)
-target_link_libraries(ipv6_playground roaring apr-1)
-target_link_libraries(check_ipv6_playground check roaring apr-1)
+add_library(mod_antiloris MODULE mod_antiloris.c)
+set_target_properties(mod_antiloris PROPERTIES PREFIX "")
+target_link_libraries(mod_antiloris apr-1)
+
+add_executable(check_ip_helper check_ip_helper.c ip_helper.h ip_helper.c)
+target_link_libraries(check_ip_helper check roaring apr-1)
