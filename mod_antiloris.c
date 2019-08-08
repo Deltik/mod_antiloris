@@ -28,12 +28,11 @@
 #include "http_core.h"
 #include "http_connection.h"
 #include "http_log.h"
-#include "mpm_common.h"
 #include "ap_mpm.h"
-#include "ap_release.h"
 #include "apr_hash.h"
 #include "apr_strings.h"
 #include "scoreboard.h"
+#include <stdlib.h>
 
 #define MODULE_NAME "mod_antiloris"
 #define MODULE_VERSION "0.6.1"
@@ -303,10 +302,8 @@ static int pre_connection(conn_rec *c) {
 #endif
 #if AP_MODULE_MAGIC_AT_LEAST(20110605, 2)
         apr_socket_close(csd);
-        return DONE;
-#else
-        return OK;
 #endif
+        return OK;
     }
 
     /* Pass request to appropriate module */
