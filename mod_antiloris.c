@@ -1,5 +1,5 @@
 /*
-   mod_antiloris 0.6.1
+   mod_antiloris 0.7.0
    Copyright (C) 2008-2010 Monshouwer Internet Diensten
 
    Author: Kees Monshouwer
@@ -32,10 +32,11 @@
 #include "apr_hash.h"
 #include "apr_strings.h"
 #include "scoreboard.h"
+#include "ip_helper.h"
 #include <stdlib.h>
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.6.1"
+#define MODULE_VERSION "0.7.0"
 #define ANTILORIS_DEFAULT_MAX_CONN_TOTAL 30
 #define ANTILORIS_DEFAULT_MAX_CONN_READ 10
 #define ANTILORIS_DEFAULT_MAX_CONN_WRITE 10
@@ -54,7 +55,7 @@ APLOG_USE_MODULE(antiloris);
 #define OTHER_COUNT_INDEX 2
 
 module AP_MODULE_DECLARE_DATA
-antiloris_module;
+        antiloris_module;
 
 static int server_limit, thread_limit;
 
@@ -66,7 +67,7 @@ typedef struct {
     signed long int other_limit;
 
     /* Whitelist IP Addresses */
-    apr_array_header_t *whitelist_ips;
+    struct flexmap *ip_whitelist;
 } antiloris_config;
 
 typedef struct {
@@ -76,13 +77,14 @@ typedef struct {
 
 /** Create per-server configuration structure */
 static void *create_config(apr_pool_t *p, server_rec *s) {
+    apr_pool = p;
     antiloris_config *conf = apr_pcalloc(p, sizeof(*conf));
 
     conf->total_limit = ANTILORIS_DEFAULT_MAX_CONN_TOTAL;
     conf->read_limit = ANTILORIS_DEFAULT_MAX_CONN_READ;
     conf->write_limit = ANTILORIS_DEFAULT_MAX_CONN_WRITE;
     conf->other_limit = ANTILORIS_DEFAULT_MAX_CONN_OTHER;
-    conf->whitelist_ips = apr_array_make(p, 0, sizeof(char *));
+    conf->ip_whitelist = create_flexmap();
 
     return conf;
 }
@@ -142,7 +144,41 @@ static const char *ip_other_limit_config_cmd(cmd_parms *parms, void *_mconfig, c
 
 /** Parse WhitelistIPs/LocalIPs directive */
 static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
-    *(char **) apr_array_push(_get_config(parms)->whitelist_ips) = apr_pstrdup(parms->pool, arg);
+    int rc;
+    struct flexmap *whitelist = _get_config(parms)->ip_whitelist;
+    char input_ips[strlen(arg) + 1];
+    strcpy(input_ips, arg);
+    char *input_ip = strtok(input_ips, " ");
+    while (input_ip != NULL) {
+        rc = whitelist_ip(whitelist, input_ip);
+        if (rc != 0) {
+            const int MAX_ERROR_STRING_LENGTH = 128;
+            char error_string_buffer[MAX_ERROR_STRING_LENGTH];
+            switch (rc) {
+                case ANTILORIS_CONFIG_ERROR_IP_PARSE:
+                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
+                             "Cannot parse this as an IP address: %s", input_ip);
+                    break;
+                case ANTILORIS_CONFIG_ERROR_IP_CIDR:
+                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
+                             "Invalid CIDR provided: %s", input_ip);
+                    break;
+                case ANTILORIS_CONFIG_ERROR_IP_IN_NETMASK:
+                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
+                             "IP address cannot have host bits in netmask: %s", input_ip);
+                    break;
+                case ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER:
+                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
+                             "Lower bound cannot be higher than upper bound in range: %s", input_ip);
+                    break;
+                default:
+                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
+                             "Unknown error (%d) parsing this IP address: %s", rc, input_ip);
+            }
+            return strdup(error_string_buffer);
+        }
+        input_ip = strtok(NULL, " ");
+    }
 
     return NULL;
 }
@@ -185,7 +221,10 @@ static int post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, serve
     ap_mpm_query(AP_MPMQ_HARD_LIMIT_DAEMONS, &server_limit);
 
     ap_add_version_component(p, MODULE_NAME "/" MODULE_VERSION);
-    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, MODULE_NAME " " MODULE_VERSION " started");
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, MODULE_NAME
+            " "
+            MODULE_VERSION
+            " started");
 
     return OK;
 }
@@ -236,25 +275,14 @@ static int pre_connection(conn_rec *c) {
     apr_cpystrn(ws_record->client, remote_ip, sizeof(ws_record->client));
 
     /* Take whitelist IPs in consideration */
-    if (conf->whitelist_ips->nelts) {
-        char **ip = (char **) conf->whitelist_ips->elts;
-        for (i = 0; i < conf->whitelist_ips->nelts; i++) {
+    if (is_ip_whitelisted(remote_ip, conf->ip_whitelist)) {
 #if AP_MODULE_MAGIC_AT_LEAST(20050101, 0)
-            ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c, "Performing IP check versus: \"%s\"", ip[i]);
+        ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c, "Exempted from connection limit");
 #else
-            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "[client %s] Performing IP check versus: \"%s\"", remote_ip,
-                         ip[i]);
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "[client %s] Exempted from connection limit", remote_ip);
 #endif
-            if (ap_strcasecmp_match(remote_ip, ip[i]) == 0) {
-#if AP_MODULE_MAGIC_AT_LEAST(20050101, 0)
-                ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c, "Exempted from connection limit");
-#else
-                ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "[client %s] Exempted from connection limit", remote_ip);
-#endif
-                /* Pass request to appropriate module */
-                return DECLINED;
-            }
-        }
+        /* Pass request to appropriate module */
+        return DECLINED;
     }
 
     /* Count up the number of connections we are handling right now from this IP address */
@@ -318,7 +346,7 @@ static void register_hooks(apr_pool_t *p) {
 
 /** Our module data */
 module AP_MODULE_DECLARE_DATA
-antiloris_module = {
+        antiloris_module = {
         STANDARD20_MODULE_STUFF,
         NULL,            /* create per-dir config structures */
         NULL,            /* merge  per-dir config structures */

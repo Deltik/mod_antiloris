@@ -23,19 +23,6 @@
 
 apr_pool_t *apr_pool;
 
-static bool is_ip_whitelisted(char *ip_input, struct flexmap *whitelist) {
-    char ip[INET6_ADDRSTRLEN];
-    memcpy(ip, ip_input, INET6_ADDRSTRLEN - 1);
-    uint32_t ip_test[4];
-    auto_convert_ipv4_to_ipv6(ip);
-    parse_ipv6_address(ip, ip_test);
-    if (flexmap_contains(whitelist, ip_test)) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
 START_TEST(test_single_ip_whitelist) {
     struct flexmap *whitelist = create_flexmap();
     char input[] = "192.168.168.192";

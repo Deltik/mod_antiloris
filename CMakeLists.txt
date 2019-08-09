@@ -23,6 +23,7 @@ add_subdirectory("${PROJECT_SOURCE_DIR}/lib/check")
 
 include_directories("${PROJECT_SOURCE_DIR}/lib/croaring/include/roaring")
 add_subdirectory("${PROJECT_SOURCE_DIR}/lib/croaring")
+set(ROARING_BUILD_STATIC ON CACHE BOOL "Build a static library" FORCE)
 
 find_program(APXS apxs)
 if (NOT APXS)
@@ -55,9 +56,13 @@ else (NOT APR)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${APR_C_FLAGS} -I${APR_INCLUDEDIR}")
 endif (NOT APR)
 
+add_library(ip_helper STATIC ip_helper.c)
+target_link_libraries(ip_helper roaring apr-1)
+set_property(TARGET ip_helper PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 add_library(mod_antiloris MODULE mod_antiloris.c)
 set_target_properties(mod_antiloris PROPERTIES PREFIX "")
-target_link_libraries(mod_antiloris apr-1)
+target_link_libraries(mod_antiloris roaring apr-1 ip_helper)
 
 add_executable(check_ip_helper check_ip_helper.c ip_helper.h ip_helper.c)
 target_link_libraries(check_ip_helper check roaring apr-1)

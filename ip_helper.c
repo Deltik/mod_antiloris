@@ -22,13 +22,6 @@
 #include <apr_hash.h>
 #include "ip_helper.h"
 
-#define ANTILORIS_CONFIG_ERROR_IP_PARSE 255
-#define ANTILORIS_CONFIG_ERROR_IP_CIDR 254
-#define ANTILORIS_CONFIG_ERROR_IP_IN_NETMASK 253
-#define ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER 252
-
-apr_pool_t *apr_pool;
-
 struct flexmap *create_flexmap() {
     struct flexmap *new_flexmap = malloc(sizeof(struct flexmap));
     new_flexmap->level = 0;
@@ -222,4 +215,17 @@ int whitelist_ip(struct flexmap *whitelist, char *input) {
     flexmap_fill_range(whitelist, ip_lower, ip_upper, 0);
 
     return 0;
+}
+
+bool is_ip_whitelisted(char *ip_input, struct flexmap *whitelist) {
+    char ip[INET6_ADDRSTRLEN];
+    memcpy(ip, ip_input, INET6_ADDRSTRLEN - 1);
+    uint32_t ip_test[4];
+    auto_convert_ipv4_to_ipv6(ip);
+    parse_ipv6_address(ip, ip_test);
+    if (flexmap_contains(whitelist, ip_test)) {
+        return true;
+    } else {
+        return false;
+    }
 }

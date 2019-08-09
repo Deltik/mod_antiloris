@@ -21,6 +21,16 @@
 
 #ifndef ANTILORIS_IPV6_PLAYGROUND_H
 
+#define ANTILORIS_CONFIG_ERROR_IP_PARSE 255
+#define ANTILORIS_CONFIG_ERROR_IP_CIDR 254
+#define ANTILORIS_CONFIG_ERROR_IP_IN_NETMASK 253
+#define ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER 252
+
+/**
+ * Global pointer to an Apache Portable Runtime memory pool
+ */
+apr_pool_t *apr_pool;
+
 /**
  * A huge bitmap. Currently hard-coded to support 128 bits.
  */
@@ -107,6 +117,14 @@ static int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upp
  * @return 0 if successful, error code if not successful
  */
 int whitelist_ip(struct flexmap *whitelist, char *input);
+
+/**
+ * Check if the IP address is present in the huge bitmap
+ * @param ip_input A single IPv4 or IPv6 address
+ * @param whitelist The huge bitmap
+ * @return true if the provided IP address is present in the huge bitmap
+ */
+bool is_ip_whitelisted(char *ip_input, struct flexmap *whitelist);
 
 #define ANTILORIS_IPV6_PLAYGROUND_H
 
