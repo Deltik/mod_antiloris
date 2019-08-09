@@ -56,7 +56,7 @@ bool parse_ipv6_address(char *input, uint32_t *dest) {
     return 1;
 }
 
-static void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *ip_upper, int level) {
+void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *ip_upper, int level) {
     if (ip_upper[level] - ip_lower[level] > 1) {
         // Fill bits in between
         roaring_bitmap_add_range_closed(flexmap->bitmap, ip_lower[level] + 1, ip_upper[level] - 1);
@@ -119,7 +119,7 @@ static void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint
     }
 }
 
-static bool _flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address, int level) {
+bool _flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address, int level) {
     if (roaring_bitmap_contains(flexmap->bitmap, ip_address[level])) {
         return true;
     }
@@ -150,7 +150,7 @@ int parse_ip_range_hyphenated(char *input, uint32_t *ip_lower, uint32_t *ip_uppe
     return 0;
 }
 
-static int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upper) {
+int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upper) {
     bool converted_to_ipv6;
     char input_ip_lower[INET6_ADDRSTRLEN];
     strncpy(input_ip_lower, strtok(input, "/"), INET6_ADDRSTRLEN - 1);

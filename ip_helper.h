@@ -72,7 +72,7 @@ bool parse_ipv6_address(char *input, uint32_t *dest);
  * @param ip_upper The biggest number, which will also be set to true
  * @param level Recursion depth; starts at 0 and counts up
  */
-static void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *ip_upper, int level);
+void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *ip_upper, int level);
 
 /**
  * Check if the huge bitmap includes the provided number
@@ -81,7 +81,7 @@ static void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint
  * @param level Recursion depth; starts at 0 and counts up
  * @return true if the number is present in the huge bitmap
  */
-static bool _flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address, int level);
+bool _flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address, int level);
 
 /**
  * Check if the huge bitmap includes the provided number
@@ -99,7 +99,7 @@ bool flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address);
  * @param ip_upper 16-byte array representing the upper bound of the IP address range
  * @return 0 if successful, error code if not successful
  */
-static int parse_ip_range_hyphenated(char *input, uint32_t *ip_lower, uint32_t *ip_upper);
+int parse_ip_range_hyphenated(char *input, uint32_t *ip_lower, uint32_t *ip_upper);
 
 /**
  * Takes a single IP address or CIDR notation and calculates the upper and lower bounds
@@ -108,7 +108,7 @@ static int parse_ip_range_hyphenated(char *input, uint32_t *ip_lower, uint32_t *
  * @param ip_upper 16-byte array representing the upper bound of the IP address range
  * @return 0 if successful, error code if not successful
  */
-static int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upper);
+int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upper);
 
 /**
  * Adds the IP address, IP address range, or a CIDR range to the huge bitmap

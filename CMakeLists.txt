@@ -66,3 +66,6 @@ target_link_libraries(mod_antiloris roaring apr-1 ip_helper)
 
 add_executable(check_ip_helper check_ip_helper.c ip_helper.h ip_helper.c)
 target_link_libraries(check_ip_helper check roaring apr-1)
+
+enable_testing()
+add_test(NAME check_ip_helper COMMAND check_ip_helper)

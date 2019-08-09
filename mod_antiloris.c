@@ -150,6 +150,7 @@ static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, co
     strcpy(input_ips, arg);
     char *input_ip = strtok(input_ips, " ");
     while (input_ip != NULL) {
+        char * original_input_ip = strdup(input_ip);
         rc = whitelist_ip(whitelist, input_ip);
         if (rc != 0) {
             const int MAX_ERROR_STRING_LENGTH = 128;
@@ -157,23 +158,23 @@ static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, co
             switch (rc) {
                 case ANTILORIS_CONFIG_ERROR_IP_PARSE:
                     snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "Cannot parse this as an IP address: %s", input_ip);
+                             "Cannot parse this as an IP address: %s", original_input_ip);
                     break;
                 case ANTILORIS_CONFIG_ERROR_IP_CIDR:
                     snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "Invalid CIDR provided: %s", input_ip);
+                             "Invalid CIDR provided: %s", original_input_ip);
                     break;
                 case ANTILORIS_CONFIG_ERROR_IP_IN_NETMASK:
                     snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "IP address cannot have host bits in netmask: %s", input_ip);
+                             "IP address cannot have host bits in netmask: %s", original_input_ip);
                     break;
                 case ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER:
                     snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "Lower bound cannot be higher than upper bound in range: %s", input_ip);
+                             "Lower bound cannot be higher than upper bound in range: %s", original_input_ip);
                     break;
                 default:
                     snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "Unknown error (%d) parsing this IP address: %s", rc, input_ip);
+                             "Unknown error (%d) parsing this IP address: %s", rc, original_input_ip);
             }
             return strdup(error_string_buffer);
         }
