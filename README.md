@@ -10,8 +10,9 @@ It works by preventing new connections from the same IP address after the connec
    * [mod_antiloris](#mod_antiloris)
       * [Table of Contents](#table-of-contents)
       * [Installation](#installation)
-         * [Compilation](#compilation)
          * [Pre-Built Module](#pre-built-module)
+         * [Compilation with CMake](#compilation-with-cmake)
+         * [Compilation of Older Versions](#compilation-of-older-versions)
       * [Usage](#usage)
          * [Example Mitigation](#example-mitigation)
       * [Configuration](#configuration)
@@ -27,7 +28,52 @@ It works by preventing new connections from the same IP address after the connec
 
 ## Installation
 
-### Compilation
+### Pre-Built Module
+
+Pre-built modules might exist on [the project's releases page](https://github.com/Deltik/mod_antiloris/releases).  If the module is available in binary format (`mod_antiloris.so`), you can install it by:
+
+1. Copying `mod_antiloris.so` to your Apache modules folder (`/usr/lib64/apache2/modules/` on some Linux systems) and
+2. Adding the following directive to your Apache configuration file (`httpd.conf` or somewhere that is `Include`d like `/etc/apache2/conf.modules.d/mod_antiloris.conf`):
+   ```
+   LoadModule antiloris_module modules/mod_antiloris.so
+   ```
+
+### Compilation with CMake
+
+(`>= 0.7`)
+
+mod_antiloris has more dependencies than in previous versions, but building isn't much harder.  Just make sure you have `cmake` installed in addition to the Apache development tools.  You should also have `git` so that CMake can download the rest of the dependencies automatically.  To be exact:
+
+* _Suggested dependency installation for Debian/Ubuntu:_
+  `apt install -y apache2-dev cmake git`
+* _Suggested dependency installation for RHEL/CentOS:_
+  * With `dnf`: `dnf install -y epel-release && dnf install -y gcc /usr/bin/apxs make cmake3 git`
+  * With `yum`: `yum install -y epel-release && yum install -y gcc /usr/bin/apxs make cmake3 git`
+* _Suggested dependency installation for Fedora:_
+  `dnf install -y gcc /usr/bin/apxs make cmake git redhat-rpm-config`
+
+mod_antiloris is most easily installed by copying or downloading the source code to your Apache server and running these commands:
+
+```
+git clone https://github.com/Deltik/mod_antiloris.git
+cd mod_antiloris
+
+# Optional: git checkout "v${ANTILORIS_VERSION}"
+# Replace ${ANTILORIS_VERSION} with the desired version of this software.
+
+# RHEL/CentOS 6 and 7 compatibility
+if type cmake3 > /dev/zero 2>&1; then alias cmake="cmake3"; fi
+
+cmake .
+make
+apxs -i -a -n antiloris mod_antiloris.so
+```
+
+The output of the `apxs` command shows where the module was installed, so you can use that information to uninstall the module, if desired.
+
+### Compilation of Older Versions
+
+(`< 0.7`)
 
 mod_antiloris is most easily installed by copying or downloading the source code to your Apache server and running the following command:
 
@@ -36,16 +82,6 @@ apxs -a -i -c mod_antiloris.c
 ```
 
 The output of the command shows where the module was installed, so you can use that information to uninstall the module, if desired.
-
-### Pre-Built Module
-
-If the module is available in binary format (`mod_antiloris.so`), you can install it by:
-
-1. Copying `mod_antiloris.so` to your Apache modules folder (`/usr/lib64/apache2/modules/` on some Linux systems) and
-2. Adding the following directive to your Apache configuration file (`httpd.conf` or somewhere that is `Include`d):
-   ```
-   LoadModule antiloris_module modules/mod_antiloris.so
-   ```
 
 ## Usage
 
