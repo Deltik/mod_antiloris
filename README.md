@@ -25,6 +25,7 @@ It works by preventing new connections from the same IP address after the connec
          * [Versioning](#versioning)
             * [Examples](#examples-1)
       * [Backwards Compatibility](#backwards-compatibility)
+      * [Testing](#testing)
 
 ## Installation
 
@@ -52,7 +53,7 @@ mod_antiloris has more dependencies than in previous versions, but building isn'
 * _Suggested dependency installation for Fedora:_
   `dnf install -y gcc /usr/bin/apxs make cmake git redhat-rpm-config`
 
-mod_antiloris is most easily installed by copying or downloading the source code to your Apache server and running these commands:
+mod_antiloris is most easily installed by running these commands on your Apache server:
 
 ```
 git clone https://github.com/Deltik/mod_antiloris.git
@@ -165,7 +166,7 @@ LoadModule antiloris_module modules/mod_antiloris.so
 </IfModule>
 ```
 
-(`>= 0.7`) Default mitigation settings, but exclude Cloudflare and localhost IP addresses:
+(`>= 0.7`) Default mitigation settings, but exclude [Cloudflare IP addresses](https://www.cloudflare.com/ips/) and localhost IP addresses:
 
 ```
 LoadModule antiloris_module modules/mod_antiloris.so
@@ -228,3 +229,13 @@ In the documentation, version constraints are used to indicate to which versions
 This module is a fork of [NewEraCracker's mod_antiloris](https://gist.github.com/NewEraCracker/e545f0dcf64ba816d49b), which itself is a fork of [mind04's mod_antiloris](https://mod-antiloris.sourceforge.io/).
 
 mod_antiloris versions `< 1` are intended to be fully backwards-compatible with both upstream projects.
+
+## Testing
+
+(`>= 0.7`)
+
+After generating the build files from `cmake`, tests can simply be run with this command:
+
+```
+make test
+```
