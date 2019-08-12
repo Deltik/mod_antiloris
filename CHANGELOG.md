@@ -7,6 +7,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.7.0 (2019-08-12)
+
+### Added
+
+- `IPTotalLimit` directive: Maximum simultaneous connections in any state per IP address
+- `WhitelistIPs` directive: Space-delimited list of IPv4 and IPv6 addresses, ranges, or CIDRs which should not be subjected to any limits by mod_antiloris
+
+### Changed
+
+- `LocalIPs` is now an alias of `WhitelistIPs`, but `WhitelistIPs` overrides `LocalIPs`.  The implementations of both directives are now the same.
+
+### Fixed
+
+- Various connections slot states considered "other" were not being counted. They were:
+  - `SERVER_BUSY_LOG`
+  - `SERVER_BUSY_DNS`
+  - `SERVER_CLOSING`
+  - `SERVER_GRACEFUL`
+- Off-by-one bug allowed one more connection than defined in the limits directives
+- Invalid return code could be returned by the `ap_hook_process_connection` hook
+
 ## v0.6.0 (2014-09-09)
 
 ### Added

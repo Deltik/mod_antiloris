@@ -180,9 +180,9 @@ LoadModule antiloris_module modules/mod_antiloris.so
 ### IP Addresses
 
 For directives that accept IP addresses, this module matches IPv4 and IPv6 addresses in the form of:
-* Individual addresses (e.g. `127.0.0.1` matches only `127.0.0.1`),
-* Hyphenated ranges (e.g. `127.0.1.1-127.0.1.3` matches `127.0.1.1`, `127.0.1.2`, and `127.0.1.3`), or
-* CIDR notation (e.g. `127.0.2.0/30` matches `127.0.2.0`, `127.0.2.1`, `127.0.2.2`, and `127.0.2.3`).
+* (`>= 0.6`) Individual addresses (e.g. `127.0.0.1` matches only `127.0.0.1`),
+* (`>= 0.7`) Hyphenated ranges (e.g. `127.0.1.1-127.0.1.3` matches `127.0.1.1`, `127.0.1.2`, and `127.0.1.3`), or
+* (`>= 0.7`) CIDR notation (e.g. `127.0.2.0/30` matches `127.0.2.0`, `127.0.2.1`, `127.0.2.2`, and `127.0.2.3`).
 
 #### Examples
 
@@ -228,7 +228,7 @@ In the documentation, version constraints are used to indicate to which versions
 
 This module is a fork of [NewEraCracker's mod_antiloris](https://gist.github.com/NewEraCracker/e545f0dcf64ba816d49b), which itself is a fork of [mind04's mod_antiloris](https://mod-antiloris.sourceforge.io/).
 
-mod_antiloris versions `< 1` are intended to be fully backwards-compatible with both upstream projects.
+mod_antiloris versions `< 1` are intended to be backwards-compatible with both upstream projects, but the default directive values may have changed.
 
 ## Testing
 
