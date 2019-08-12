@@ -5,6 +5,10 @@
 **mod_antiloris** is an [Apache HTTP Server](https://httpd.apache.org/) module that helps to mitigate [Slowloris](https://en.wikipedia.org/wiki/Slowloris_%28computer_security%29) denial of service (DoS) attacks.
 It works by preventing new connections from the same IP address after the connection count of the IP exceeds a configurable limit.
 
+[**Why mod_antiloris?**](#comparison-with-other-mitigation-strategies)
+
+[![mod_antiloris v0.7.0 in action](https://user-images.githubusercontent.com/1364268/62870861-f83d3300-bcdf-11e9-9cf0-aea8b0037115.png)](https://user-images.githubusercontent.com/1364268/62870345-2110f880-bcdf-11e9-8496-569349049730.png)
+
 ## Table of Contents
 
    * [mod_antiloris](#mod_antiloris)
@@ -25,6 +29,13 @@ It works by preventing new connections from the same IP address after the connec
          * [Versioning](#versioning)
             * [Examples](#examples-1)
       * [Backwards Compatibility](#backwards-compatibility)
+      * [Comparison with Other Mitigation Strategies](#comparison-with-other-mitigation-strategies)
+         * [mod_antiloris vs. mod_reqtimeout](#mod_antiloris-vs-mod_reqtimeout)
+         * [mod_antiloris vs. mod_qos](#mod_antiloris-vs-mod_qos)
+         * [mod_antiloris vs. mod_noloris](#mod_antiloris-vs-mod_noloris)
+         * [mod_antiloris vs. ModSecurity](#mod_antiloris-vs-modsecurity)
+         * [mod_antiloris vs. mod_evasive](#mod_antiloris-vs-mod_evasive)
+         * [mod_antiloris vs. mod_limitipconn](#mod_antiloris-vs-mod_limitipconn)
       * [Testing](#testing)
 
 ## Installation
@@ -229,6 +240,50 @@ In the documentation, version constraints are used to indicate to which versions
 This module is a fork of [NewEraCracker's mod_antiloris](https://gist.github.com/NewEraCracker/e545f0dcf64ba816d49b), which itself is a fork of [mind04's mod_antiloris](https://mod-antiloris.sourceforge.io/).
 
 mod_antiloris versions `< 1` are intended to be backwards-compatible with both upstream projects, but the default directive values may have changed.
+
+## Comparison with Other Mitigation Strategies
+
+### mod_antiloris vs. [mod_reqtimeout](https://httpd.apache.org/docs/trunk/mod/mod_reqtimeout.html)
+
+mod_reqtimeout effectively kicks slow connections, but it does not prevent those connections from being made in the first place.  This means that during mod_reqtimeout's timeout grace period, Apache's connection slots can be filled up.
+
+mod_antiloris prevents too many slow connections made from one client.  This addresses the drawback of mod_reqtimeout.  For the best DoS mitigation, **[mod_antiloris should be combined with mod_reqtimeout](#usage)**.
+
+### mod_antiloris vs. [mod_qos](http://mod-qos.sourceforge.net/)
+
+At the time of writing, mod_qos only works on Apache 2.2 with [MPM worker](https://httpd.apache.org/docs/2.2/mod/worker.html).  mod_qos is probably better than mod_antiloris on Apache 2.2 and MPM worker, but **it seems to be broken on newer Apache major versions and on other MPMs**.
+
+### mod_antiloris vs. [mod_noloris](http://svn.eu.apache.org/viewvc/httpd/httpd/trunk/modules/experimental/mod_noloris.c)
+
+mod_noloris is based on mod_antiloris `= 0.3`, but it runs an IP ban check on a (default) 10-second timer instead of on every request like in mod_antiloris.  **This leaves a window of time for a Slowloris DoS to make Apache unresponsive.**
+
+mod_noloris also has other drawbacks:
+
+* Banned IPs are not unbanned until the server is restarted, which means legitimate requests can be banned indefinitely if the client is sufficiently unlucky.
+* Only connections in the `SERVER_BUSY_READ` state are counted, so variant Slowloris attacks using a different state would be immune to mitigations.
+* A more clever Slowloris attacker can anticipate the timer to make their attack invisible to mod_noloris.
+* Banned IPs are scanned sequentially on every request (linear time) instead of looked up in a hash table (constant time).  The bigger the banlist, the larger the performance penalty upon every request, even if the request is legitimate.
+
+Although mod_noloris in theory consumes less time and resources on every request (if the banlist is empty) due to the deferred connection scan, the savings are negligible.  On a test server with 1000 connection slots, mod_antiloris `= 0.7.0` caused connections to be established 0.0000229 seconds slower on average.  The test was conducted by requesting a static TXT file 10000 times with 10 concurrent requests of `curl -w "%{time_connect}"`.  Data summary:
+
+|Slowloris mitigation|N|min|q1|median|q3|max|mean|stddev|
+|---|---|---|---|---|---|---|---|---|
+|_none_|10000|0.004141|0.004209|0.004231|0.004266|0.018902|0.00464977|0.0016542|
+|mod_antiloris `= 0.7.0`|10000|0.004143|0.004209|0.004232|0.004267|0.018475|0.00467267|0.00169251|
+
+### mod_antiloris vs. [ModSecurity](https://www.modsecurity.org/)
+
+ModSecurity depends on other sources to decide whether to block a connection.  At the time of writing, the OWASP ModSecurity Core Rule Set V3.0 has a rule to block too many requests to dynamic resources, but **there is nothing by default to block Slowloris specifically**.
+
+It is possible to use the HTTP 408 returned by mod_reqtimeout to increment a denial-of-service counter in ModSecurity, but **this suffers from the same drawbacks as mod_reqtimeout**.
+
+### mod_antiloris vs. [mod_evasive](https://github.com/jzdziarski/mod_evasive)
+
+**mod_evasive does nothing to mitigate Slowloris.**  It is designed to return HTTP 403 to the client if the client makes too many requests, but it assumes that the client is willing to receive the response.  Slowloris, of course, doesn't, so the connection slots remain occupied.
+
+### mod_antiloris vs. [mod_limitipconn](https://dominia.org/djao/limitipconn2.html)
+
+mod_limitipconn is conceptually similar to mod_antiloris, but **mod_limitipconn hooks too late and can't mitigate Slowloris**.  It is designed to return HTTP 503 to the client if the client makes too many connections, but it assumes that the client is willing to receive the response.  Slowloris, of course, doesn't, so the connection slots remain occupied.
 
 ## Testing
 
