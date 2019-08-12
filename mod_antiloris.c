@@ -50,9 +50,10 @@ APLOG_USE_MODULE(antiloris);
 #define remote_ip client_ip
 #endif
 
-#define READ_COUNT_INDEX 0
-#define WRITE_COUNT_INDEX 1
-#define OTHER_COUNT_INDEX 2
+#define ANTILORIS_COUNTER_TYPE_COUNT 3
+#define ANTILORIS_READ_COUNT_INDEX 0
+#define ANTILORIS_WRITE_COUNT_INDEX 1
+#define ANTILORIS_OTHER_COUNT_INDEX 2
 
 module AP_MODULE_DECLARE_DATA
         antiloris_module;
@@ -150,7 +151,7 @@ static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, co
     strcpy(input_ips, arg);
     char *input_ip = strtok(input_ips, " ");
     while (input_ip != NULL) {
-        char * original_input_ip = strdup(input_ip);
+        char *original_input_ip = strdup(input_ip);
         rc = whitelist_ip(whitelist, input_ip);
         if (rc != 0) {
             const int MAX_ERROR_STRING_LENGTH = 128;
@@ -236,14 +237,14 @@ static int post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, serve
  * @param conf The configuration struct
  * @return 1 if a limit has been reached or 0 if no limits have been reached
  */
-static int _reached_ip_con_limit(signed long int *ip_counts, antiloris_config *conf) {
-    int i, ip_total_count = 0;
-    for (i = 0; i < sizeof(ip_counts) / sizeof(ip_counts[0]); i++)
+static int _reached_ip_con_limit(const signed long int *ip_counts, antiloris_config *conf) {
+    signed long int ip_total_count = 0;
+    for (int i = 0; i < ANTILORIS_COUNTER_TYPE_COUNT; i++)
         ip_total_count += ip_counts[i];
     if ((conf->total_limit > 0 && ip_total_count >= conf->total_limit) ||
-        (conf->read_limit > 0 && ip_counts[READ_COUNT_INDEX] >= conf->read_limit) ||
-        (conf->write_limit > 0 && ip_counts[WRITE_COUNT_INDEX] >= conf->write_limit) ||
-        (conf->other_limit > 0 && ip_counts[OTHER_COUNT_INDEX] >= conf->other_limit))
+        (conf->read_limit > 0 && ip_counts[ANTILORIS_READ_COUNT_INDEX] >= conf->read_limit) ||
+        (conf->write_limit > 0 && ip_counts[ANTILORIS_WRITE_COUNT_INDEX] >= conf->write_limit) ||
+        (conf->other_limit > 0 && ip_counts[ANTILORIS_OTHER_COUNT_INDEX] >= conf->other_limit))
         return 1;
     return 0;
 }
@@ -257,7 +258,7 @@ static int pre_connection(conn_rec *c) {
     int i = 0, j = 0;
 
     /* running count of number of connections from this address */
-    signed long int ip_counts[3] = {0};
+    signed long int ip_counts[ANTILORIS_COUNTER_TYPE_COUNT] = {0};
 
     /* other variables we'll be using */
     antiloris_config *conf = ap_get_module_config(c->base_server->module_config, &antiloris_module);
@@ -298,12 +299,12 @@ static int pre_connection(conn_rec *c) {
                 case SERVER_BUSY_READ:
                     /* Handle read state */
                     if (strcmp(remote_ip, ws_record->client) == 0)
-                        ip_counts[READ_COUNT_INDEX]++;
+                        ip_counts[ANTILORIS_READ_COUNT_INDEX]++;
                     break;
                 case SERVER_BUSY_WRITE:
                     /* Handle write state */
                     if (strcmp(remote_ip, ws_record->client) == 0)
-                        ip_counts[WRITE_COUNT_INDEX]++;
+                        ip_counts[ANTILORIS_WRITE_COUNT_INDEX]++;
                     break;
                 case SERVER_BUSY_KEEPALIVE:
                 case SERVER_BUSY_LOG:
@@ -312,7 +313,7 @@ static int pre_connection(conn_rec *c) {
                 case SERVER_GRACEFUL:
                     /* Handle any other connection state */
                     if (strcmp(remote_ip, ws_record->client) == 0)
-                        ip_counts[OTHER_COUNT_INDEX]++;
+                        ip_counts[ANTILORIS_OTHER_COUNT_INDEX]++;
                     break;
                 default:
                     /* Other states are ignored */
