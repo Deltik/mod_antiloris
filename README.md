@@ -107,7 +107,7 @@ Using both modules at the same time protects against both kinds of DoS offenders
 ### Example Mitigation
 
 ```
-LoadModule mod_reqtimeout modules/mod_reqtimeout.so
+LoadModule reqtimeout_module modules/mod_reqtimeout.so
 <IfModule mod_reqtimeout>
     RequestReadTimeout header=20-40,MinRate=500 body=20-40,MinRate=500
 </IfModule>
@@ -253,7 +253,7 @@ mod_antiloris prevents too many slow connections made from one client.  This add
 
 At the time of writing, mod_qos only works on Apache 2.2 with [MPM worker](https://httpd.apache.org/docs/2.2/mod/worker.html).  mod_qos is probably better than mod_antiloris on Apache 2.2 and MPM worker, but **it seems to be broken on newer Apache major versions and on other MPMs**.
 
-### mod_antiloris vs. [mod_noloris](http://svn.eu.apache.org/viewvc/httpd/httpd/trunk/modules/experimental/mod_noloris.c)
+### mod_antiloris vs. [mod_noloris](http://svn.apache.org/viewvc/httpd/httpd/trunk/modules/experimental/mod_noloris.c)
 
 mod_noloris is based on mod_antiloris `= 0.3`, but it runs an IP ban check on a (default) 10-second timer instead of on every request like in mod_antiloris.  **This leaves a window of time for a Slowloris DoS to make Apache unresponsive.**
 
