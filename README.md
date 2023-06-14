@@ -11,9 +11,10 @@ It works by preventing new connections from the same IP address after the connec
 
 ## Table of Contents
 
-   * [mod_antiloris](#mod_antiloris)
       * [Table of Contents](#table-of-contents)
       * [Installation](#installation)
+         * [Install Script](#install-script)
+            * [Tested Platforms](#tested-platforms)
          * [Pre-Built Module](#pre-built-module)
          * [Compilation with CMake](#compilation-with-cmake)
          * [Compilation of Older Versions](#compilation-of-older-versions)
@@ -39,6 +40,22 @@ It works by preventing new connections from the same IP address after the connec
       * [Testing](#testing)
 
 ## Installation
+
+### Install Script
+
+There is a shell script that automates the installation of mod_antiloris, courtesy of [@filippolauria](https://github.com/filippolauria):
+
+```shell
+wget -q https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-antiloris.sh && chmod +x install-antiloris.sh && ./install-antiloris.sh
+```
+
+This script simplifies the installation process by downloading the latest pre-built version from this repository and configuring the necessary files for seamless integration with the Apache HTTP Server.
+
+#### Tested Platforms
+
+The script has been tested on the following platforms:
+- Ubuntu 20.04
+- Debian 11
 
 ### Pre-Built Module
 
