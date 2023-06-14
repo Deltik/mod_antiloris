@@ -23,8 +23,8 @@ RELEASE_URL="https://github.com/Deltik/mod_antiloris/releases/download/${LATEST_
 
 # Check if the script is run as root
 if [ "$(id -u)" -ne 0 ]; then
-    echo "[!] This script needs to be run as root."
-    exit 1
+  echo "[!] This script needs to be run as root."
+  exit 1
 fi
 
 # Detect the operating system
@@ -33,20 +33,20 @@ OS=$(cat /etc/*-release | grep '^ID=' | cut -d'=' -f2 | tr '[:upper:]' '[:lower:
 # Set up correct paths based on the operating system (or exit)
 case $OS in
 
-  debian|ubuntu)
-    PATH_OF_MODULE="$(a2query -d)mod_antiloris.so"
-    PATH_OF_MODAVAIL_DIR='/etc/apache2/mods-available'
-    PATH_OF_MODENABL_DIR='/etc/apache2/mods-enabled'
-    PATH_OF_LOADFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.load"
-    PATH_OF_CONFFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.conf"
-    PATH_OF_LOADLINK="${PATH_OF_MODENABL_DIR}/antiloris.load"
-    PATH_OF_CONFLINK="${PATH_OF_MODENABL_DIR}/antiloris.conf"
-    ;;
+debian | ubuntu)
+  PATH_OF_MODULE="$(a2query -d)mod_antiloris.so"
+  PATH_OF_MODAVAIL_DIR='/etc/apache2/mods-available'
+  PATH_OF_MODENABL_DIR='/etc/apache2/mods-enabled'
+  PATH_OF_LOADFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.load"
+  PATH_OF_CONFFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.conf"
+  PATH_OF_LOADLINK="${PATH_OF_MODENABL_DIR}/antiloris.load"
+  PATH_OF_CONFLINK="${PATH_OF_MODENABL_DIR}/antiloris.conf"
+  ;;
 
-  *)
-    echo "[!] This script does not support the ${OS} operating system."
-    exit 1
-    ;;
+*)
+  echo "[!] This script does not support the ${OS} operating system."
+  exit 1
+  ;;
 esac
 
 echo "[+] mod_antiloris installation script"
@@ -68,31 +68,40 @@ EOF
 
 ACCEPT_DISCLAIMER=""
 while [ "$ACCEPT_DISCLAIMER" != "yes" ]; do
-    printf "[?] Are you okay with that? [yes/no]: "
-    read -r ACCEPT_DISCLAIMER
+  printf "[?] Are you okay with that? [yes/no]: "
+  read -r ACCEPT_DISCLAIMER
 
-    case $ACCEPT_DISCLAIMER in
-        "yes") echo "[+] Very good!"; ACCEPT_DISCLAIMER="yes" ;;
-        "no") echo "[!] Bye."; exit ;;
-        *) echo "[!] You have to answer yes or no."; ACCEPT_DISCLAIMER="" ;;
-    esac
+  case $ACCEPT_DISCLAIMER in
+  "yes")
+    echo "[+] Very good!"
+    ACCEPT_DISCLAIMER="yes"
+    ;;
+  "no")
+    echo "[!] Bye."
+    exit
+    ;;
+  *)
+    echo "[!] You have to answer yes or no."
+    ACCEPT_DISCLAIMER=""
+    ;;
+  esac
 done
 
-echo;
+echo
 
 # Check if Apache is installed
 APACHE_EXISTS=$(command -v apache2 || command -v httpd)
 if [ -z "${APACHE_EXISTS}" ]; then
-    echo "[!] Apache must be installed for this script to work."
-    exit 1
+  echo "[!] Apache must be installed for this script to work."
+  exit 1
 fi
 
 # Check if wget is installed
 WGET_EXISTS=$(command -v wget)
 
 if [ -z "${WGET_EXISTS}" ]; then
-    echo "[!] The system utility wget must be installed for this script to work."
-    exit 1
+  echo "[!] The system utility wget must be installed for this script to work."
+  exit 1
 fi
 
 # Download the module
@@ -100,20 +109,20 @@ TMP=$(mktemp -qu)
 echo "[+] Downloading the antiloris module..."
 wget -q "${RELEASE_URL}" -O "${TMP}"
 if [ ! -f "${TMP}" ]; then
-    echo "[!] Failed to download the antiloris module."
-    exit 1
+  echo "[!] Failed to download the antiloris module."
+  exit 1
 fi
 
 # Check if the module is already present
 if [ -f "${PATH_OF_MODULE}" ]; then
-    echo "[!] Overwriting another version of the antiloris module..."
-    rm -f "${PATH_OF_MODULE}"
+  echo "[!] Overwriting another version of the antiloris module..."
+  rm -f "${PATH_OF_MODULE}"
 fi
 
 # Install the module
 echo "[+] Installing the antiloris module..."
 mv "${TMP}" "${PATH_OF_MODULE}"
-echo "LoadModule antiloris_module ${PATH_OF_MODULE}" > "${PATH_OF_LOADFILE}"
+echo "LoadModule antiloris_module ${PATH_OF_MODULE}" >"${PATH_OF_LOADFILE}"
 
 # Create the default configuration file
 cat <<EOF
@@ -121,7 +130,7 @@ cat <<EOF
     ${PATH_OF_CONFFILE}...
 EOF
 
-cat <<EOF > "${PATH_OF_CONFFILE}"
+cat <<EOF >"${PATH_OF_CONFFILE}"
 <IfModule antiloris_module>
     # Maximum simultaneous connections in any state per IP address.
     # If set to 0, this limit does not apply.
@@ -151,30 +160,30 @@ EOF
 # Enable antiloris module
 echo "[+] Enabling the antiloris module..."
 if [ -e "${PATH_OF_LOADLINK}" ]; then
-    rm -f "${PATH_OF_LOADLINK}"
+  rm -f "${PATH_OF_LOADLINK}"
 fi
 ln -s "${PATH_OF_LOADFILE}" "${PATH_OF_LOADLINK}"
 
 if [ -e "${PATH_OF_CONFLINK}" ]; then
-    rm -f "${PATH_OF_CONFLINK}"
+  rm -f "${PATH_OF_CONFLINK}"
 fi
 ln -s "${PATH_OF_CONFFILE}" "${PATH_OF_CONFLINK}"
 
 # Check Apache configuration
-if ! apache2ctl configtest 2> /dev/null; then
-    cat <<EOF
+if ! apache2ctl configtest 2>/dev/null; then
+  cat <<EOF
 [!] Detected configuration file(s) with invalid syntax.
     Check your Apache configuration, then relaunch this script.
 EOF
-    exit 1
+  exit 1
 fi
 
 echo "[+] Restarting Apache..."
-if systemctl restart apache2 2> /dev/null; then
-    echo "[+] Apache restarted successfully."
+if systemctl restart apache2 2>/dev/null; then
+  echo "[+] Apache restarted successfully."
 else
-    echo "[!] Failed to restart Apache."
-    exit 1
+  echo "[!] Failed to restart Apache."
+  exit 1
 fi
 
 echo "[!] Antiloris module installation completed."
