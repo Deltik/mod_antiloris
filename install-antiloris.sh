@@ -159,15 +159,8 @@ EOF
 
 # Enable antiloris module
 echo "[+] Enabling the antiloris module..."
-if [ -e "${PATH_OF_LOADLINK}" ]; then
-  rm -f "${PATH_OF_LOADLINK}"
-fi
-ln -s "${PATH_OF_LOADFILE}" "${PATH_OF_LOADLINK}"
-
-if [ -e "${PATH_OF_CONFLINK}" ]; then
-  rm -f "${PATH_OF_CONFLINK}"
-fi
-ln -s "${PATH_OF_CONFFILE}" "${PATH_OF_CONFLINK}"
+ln -sf "${PATH_OF_LOADFILE}" "${PATH_OF_LOADLINK}"
+ln -sf "${PATH_OF_CONFFILE}" "${PATH_OF_CONFLINK}"
 
 # Check Apache configuration
 if ! apache2ctl configtest 2>/dev/null; then
