@@ -3,7 +3,7 @@
 ## Usage
 Execute the following command from a terminal on your Apache web server host with root privileges:
 ```bash
-wget -qO- https://raw.githubusercontent.com/filippolauria/install-antiloris/master/install-antiloris.sh | sh
+wget -q https://raw.githubusercontent.com/filippolauria/install-antiloris/master/install-antiloris.sh && chmod +x install-antiloris.sh && ./install-antiloris.sh
 ```
 
 ## Tested platforms
