@@ -1,9 +1,9 @@
 **install-antiloris.sh** is a POSIX-compliant script that automates the installation of [mod_antiloris](https://github.com/Deltik/mod_antiloris/), an [Apache HTTP Server](https://httpd.apache.org/) module designed to mitigate [Slowloris](https://en.wikipedia.org/wiki/Slowloris_%28computer_security%29) denial-of-service (DoS) attacks. This script simplifies the installation process by downloading the latest pre-built version from the official repository and configuring the necessary files for seamless integration with the Apache HTTP Server.
 
 ## Usage
+Execute the following command from a terminal on your Apache web server host with root privileges:
 
 ### interactive
-Execute the following command from a terminal on your Apache web server host with root privileges:
 ```bash
 wget -q https://raw.githubusercontent.com/filippolauria/install-antiloris/master/install-antiloris.sh && chmod +x install-antiloris.sh && ./install-antiloris.sh
 ```
