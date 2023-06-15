@@ -12,7 +12,7 @@ wget -q https://raw.githubusercontent.com/filippolauria/install-antiloris/master
 ### non-interactive installation
 Execute the following command to launch a non-interactive installation procedure:
 ```bash
-wget -q https://raw.githubusercontent.com/filippolauria/install-antiloris/master/install-antiloris.sh | sh -s - --accept-disclaimer
+wget -qO- https://raw.githubusercontent.com/filippolauria/install-antiloris/master/install-antiloris.sh | sh -s - --accept-disclaimer
 ```
 
 ## Tested platforms
