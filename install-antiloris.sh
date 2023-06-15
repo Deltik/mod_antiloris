@@ -23,7 +23,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # Detect the operating system
-OS=$(cat /etc/*-release | grep '^ID=' | cut -d'=' -f2 | tr '[:upper:]' '[:lower:]')
+OS=$(cat /etc/*-release | grep '^ID=' | cut -d'=' -f2 | tr '[A-Z]' '[a-z]')
 
 # Set up correct paths based on the operating system (or exit)
 case $OS in
@@ -44,6 +44,7 @@ case $OS in
     ;;
 esac
 
+# Display script name
 echo "[+] mod_antiloris installation script"
 
 # Display the disclaimer
@@ -54,24 +55,37 @@ cat <<EOF
     This script does not perform any backups, and the
     default actions for all files are to overwrite.
 
-    Running this script does not guarantee that the
-    module will be successfully installed, and its
-    author is not responsible for any damages that
-    may occur as a result of using this script.
+    Running this script does not guarantee the successful
+    installation of the module, and its author is not
+    responsible for any damages that may occur as a
+    result of using this script.
 
 EOF
 
+# Handle disclaimer
 ACCEPT_DISCLAIMER=""
-while [ "$ACCEPT_DISCLAIMER" != "yes" ]; do
-    printf "[?] Are you okay with that? [yes/no]: "
-    read -r ACCEPT_DISCLAIMER
+if [ "$1" != "--accept-disclaimer" ]; then
+    cat <<EOF
+[!] Hint: To avoid answering, you can pass the
+          --accept-disclaimer option when launching the script.
 
-    case $ACCEPT_DISCLAIMER in
-        "yes") echo "[+] Very good!"; ACCEPT_DISCLAIMER="yes" ;;
-        "no") echo "[!] Bye."; exit ;;
-        *) echo "[!] You have to answer yes or no."; ACCEPT_DISCLAIMER="" ;;
-    esac
-done
+EOF
+
+    while [ "$ACCEPT_DISCLAIMER" != "yes" ]; do
+        printf "[?] Are you okay with that? [yes/no]: "
+        read -r ACCEPT_DISCLAIMER
+
+        case $ACCEPT_DISCLAIMER in
+            "yes") echo "[+] Very good!" ;;
+            "no") echo "[!] Bye."; exit ;;
+            *) echo "[!] You have to answer yes or no."; ACCEPT_DISCLAIMER="" ;;
+        esac
+    done
+
+else
+    ACCEPT_DISCLAIMER="yes"
+    echo "[+] Thanks for having accepted the disclaimer."
+fi
 
 echo;
 
@@ -86,7 +100,7 @@ fi
 WGET_EXISTS=$(command -v wget)
 
 if [ -z "${WGET_EXISTS}" ]; then
-    echo "[!] The system utility wget must be installed for this script to work."
+    echo "[!] The wget utility must be installed for this script to work."
     exit 1
 fi
 
@@ -112,7 +126,7 @@ echo "LoadModule antiloris_module ${PATH_OF_MODULE}" > "${PATH_OF_LOADFILE}"
 
 # Create the default configuration file
 cat <<EOF
-[+] Creating the default antiloris configuration file in
+[+] Creating the default antiloris configuration file at
     ${PATH_OF_CONFFILE}...
 EOF
 
