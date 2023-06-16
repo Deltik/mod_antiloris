@@ -21,6 +21,48 @@
 LATEST_VERSION="v0.7.0"
 RELEASE_URL="https://github.com/Deltik/mod_antiloris/releases/download/${LATEST_VERSION}/mod_antiloris.so"
 
+usage() {
+  cat <<EOF
+usage: $0 [-h] [--version VERSION] [-y] [--uninstall]
+
+Installs mod_antiloris on an existing Apache HTTP Server
+
+options:
+  -h, --help                show this help message and exit
+  --version VERSION         install named version (e.g. "v0.7.0") rather than the default
+  -y, --accept-disclaimer   bypass the disclaimer prompt
+  --uninstall               uninstall mod_antiloris and remove its configuration
+EOF
+}
+
+parse_args() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --version)
+      shift
+      LATEST_VERSION="$1"
+      RELEASE_URL="https://github.com/Deltik/mod_antiloris/releases/download/${LATEST_VERSION}/mod_antiloris.so"
+      ;;
+    -y | --accept-disclaimer)
+      ACCEPT_DISCLAIMER="--accept-disclaimer"
+      ;;
+    --uninstall)
+      UNINSTALL="yes"
+      ;;
+    *)
+      echo "Unknown option: $1"
+      usage
+      exit 1
+      ;;
+    esac
+    shift
+  done
+}
+
 check_root() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "[!] This script needs to be run as root."
@@ -88,8 +130,7 @@ uninstall() {
 }
 
 check_disclaimer() {
-  ACCEPT_DISCLAIMER=""
-  if [ "$1" != "--accept-disclaimer" ]; then
+  if [ "$ACCEPT_DISCLAIMER" != "--accept-disclaimer" ]; then
     cat <<EOF
     [!] Hint: To avoid answering, you can pass the
               --accept-disclaimer option when launching the script.
@@ -208,10 +249,11 @@ restart_apache() {
 }
 
 main() {
+  parse_args "$@"
   check_root
   detect_os
 
-  if [ "$1" = "--uninstall" ]; then
+  if [ "$UNINSTALL" = "yes" ]; then
     uninstall
   fi
 
@@ -230,7 +272,7 @@ main() {
 
 EOF
 
-  check_disclaimer "$1"
+  check_disclaimer
   check_dependencies
   download_module
   install_module
