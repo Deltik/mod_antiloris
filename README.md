@@ -11,6 +11,7 @@ It works by preventing new connections from the same IP address after the connec
 
 ## Table of Contents
 
+   * [mod_antiloris](#mod_antiloris)
       * [Table of Contents](#table-of-contents)
       * [Installation](#installation)
          * [Install Script](#install-script)
