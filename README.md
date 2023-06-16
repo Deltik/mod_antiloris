@@ -11,40 +11,45 @@ It works by preventing new connections from the same IP address after the connec
 
 ## Table of Contents
 
-   * [mod_antiloris](#mod_antiloris)
-      * [Table of Contents](#table-of-contents)
-      * [Installation](#installation)
-         * [Install Script](#install-script)
+* [mod_antiloris](#mod_antiloris)
+    * [Table of Contents](#table-of-contents)
+    * [Installation](#installation)
+        * [Install Script](#install-script)
+            * [Interactive Install](#interactive-install)
+            * [Non-Interactive Install](#non-interactive-install)
+            * [Uninstall](#uninstall)
             * [Tested Platforms](#tested-platforms)
-         * [Pre-Built Module](#pre-built-module)
-         * [Compilation with CMake](#compilation-with-cmake)
-         * [Compilation of Older Versions](#compilation-of-older-versions)
-      * [Usage](#usage)
-         * [Example Mitigation](#example-mitigation)
-      * [Configuration](#configuration)
-         * [Directives from Older Versions](#directives-from-older-versions)
-         * [Aliases](#aliases)
-         * [Configuration Examples](#configuration-examples)
-      * [Syntax](#syntax)
-         * [IP Addresses](#ip-addresses)
+        * [Pre-Built Module](#pre-built-module)
+        * [Compilation with CMake](#compilation-with-cmake)
+        * [Compilation of Older Versions](#compilation-of-older-versions)
+    * [Usage](#usage)
+        * [Example Mitigation](#example-mitigation)
+    * [Configuration](#configuration)
+        * [Directives from Older Versions](#directives-from-older-versions)
+        * [Aliases](#aliases)
+        * [Configuration Examples](#configuration-examples)
+    * [Syntax](#syntax)
+        * [IP Addresses](#ip-addresses)
             * [Examples](#examples)
-         * [Versioning](#versioning)
+        * [Versioning](#versioning)
             * [Examples](#examples-1)
-      * [Backwards Compatibility](#backwards-compatibility)
-      * [Comparison with Other Mitigation Strategies](#comparison-with-other-mitigation-strategies)
-         * [mod_antiloris vs. mod_reqtimeout](#mod_antiloris-vs-mod_reqtimeout)
-         * [mod_antiloris vs. mod_qos](#mod_antiloris-vs-mod_qos)
-         * [mod_antiloris vs. mod_noloris](#mod_antiloris-vs-mod_noloris)
-         * [mod_antiloris vs. ModSecurity](#mod_antiloris-vs-modsecurity)
-         * [mod_antiloris vs. mod_evasive](#mod_antiloris-vs-mod_evasive)
-         * [mod_antiloris vs. mod_limitipconn](#mod_antiloris-vs-mod_limitipconn)
-      * [Testing](#testing)
+    * [Backwards Compatibility](#backwards-compatibility)
+    * [Comparison with Other Mitigation Strategies](#comparison-with-other-mitigation-strategies)
+        * [mod_antiloris vs. mod_reqtimeout](#mod_antiloris-vs-mod_reqtimeout)
+        * [mod_antiloris vs. mod_qos](#mod_antiloris-vs-mod_qos)
+        * [mod_antiloris vs. mod_noloris](#mod_antiloris-vs-mod_noloris)
+        * [mod_antiloris vs. ModSecurity](#mod_antiloris-vs-modsecurity)
+        * [mod_antiloris vs. mod_evasive](#mod_antiloris-vs-mod_evasive)
+        * [mod_antiloris vs. mod_limitipconn](#mod_antiloris-vs-mod_limitipconn)
+    * [Testing](#testing)
 
 ## Installation
 
 ### Install Script
 
-There is a shell script that automates the installation of mod_antiloris, courtesy of [@filippolauria](https://github.com/filippolauria):
+There is a shell script that automates the installation of mod_antiloris, courtesy of [@filippolauria](https://github.com/filippolauria).
+
+#### Interactive Install
 
 ```shell
 wget -q https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-antiloris.sh && chmod +x install-antiloris.sh && ./install-antiloris.sh
@@ -52,10 +57,20 @@ wget -q https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-anti
 
 This script simplifies the installation process by downloading the latest pre-built version from this repository and configuring the necessary files for seamless integration with the Apache HTTP Server.
 
+#### Non-Interactive Install
+
 The installer can also be run non-interactively:
 
 ```shell
 wget -qO- https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-antiloris.sh | sh -s - --accept-disclaimer
+```
+
+#### Uninstall
+
+The installer can uninstall and remove the configuration files for mod_antiloris with the `--uninstall` option:
+
+```shell
+wget -qO- https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-antiloris.sh | sh -s - --uninstall
 ```
 
 #### Tested Platforms

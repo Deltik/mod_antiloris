@@ -49,6 +49,50 @@ debian | ubuntu)
   ;;
 esac
 
+uninstall() {
+  echo "[+] Uninstalling mod_antiloris..."
+
+  if [ -L "${PATH_OF_LOADLINK}" ]; then
+    echo "[+] Removing antiloris.load symlink..."
+    rm -f "${PATH_OF_LOADLINK}"
+  fi
+
+  if [ -L "${PATH_OF_CONFLINK}" ]; then
+    echo "[+] Removing antiloris.conf symlink..."
+    rm -f "${PATH_OF_CONFLINK}"
+  fi
+
+  if [ -f "${PATH_OF_MODULE}" ]; then
+    echo "[+] Removing mod_antiloris.so..."
+    rm -f "${PATH_OF_MODULE}"
+  fi
+
+  if [ -f "${PATH_OF_LOADFILE}" ]; then
+    echo "[+] Removing antiloris.load..."
+    rm -f "${PATH_OF_LOADFILE}"
+  fi
+
+  if [ -f "${PATH_OF_CONFFILE}" ]; then
+    echo "[+] Removing antiloris.conf..."
+    rm -f "${PATH_OF_CONFFILE}"
+  fi
+
+  echo "[+] Restarting Apache..."
+  if systemctl restart apache2 2>/dev/null; then
+    echo "[+] Apache restarted successfully."
+  else
+    echo "[!] Failed to restart Apache."
+    exit 1
+  fi
+
+  echo "[+] mod_antiloris uninstalled successfully."
+  exit 0
+}
+
+if [ "$1" = "--uninstall" ]; then
+  uninstall
+fi
+
 # Display script name
 echo "[+] mod_antiloris installation script"
 
