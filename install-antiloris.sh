@@ -63,10 +63,21 @@ parse_args() {
   done
 }
 
-check_root() {
+ensure_root() {
   if [ "$(id -u)" -ne 0 ]; then
-    echo "[!] This script needs to be run as root."
-    exit 1
+    if command -v sudo >/dev/null 2>&1; then
+      echo "[!] This script needs to be run as root. Elevating script to root with sudo."
+      interpreter="$(head -1 "$0" | cut -c 3-)"
+      if [ -x "$interpreter" ]; then
+        sudo "$interpreter" "$0" "$@"
+      else
+        sudo "$0" "$@"
+      fi
+      exit $?
+    else
+      echo "[!] This script needs to be run as root."
+      exit 1
+    fi
   fi
 }
 
@@ -250,7 +261,7 @@ restart_apache() {
 
 main() {
   parse_args "$@"
-  check_root
+  ensure_root "$@"
   detect_os
 
   if [ "$UNINSTALL" = "yes" ]; then
