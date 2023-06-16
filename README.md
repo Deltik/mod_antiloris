@@ -51,6 +51,12 @@ wget -q https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-anti
 
 This script simplifies the installation process by downloading the latest pre-built version from this repository and configuring the necessary files for seamless integration with the Apache HTTP Server.
 
+The installer can also be run non-interactively:
+
+```shell
+wget -qO- https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-antiloris.sh | sh -s - --accept-disclaimer
+```
+
 #### Tested Platforms
 
 The script has been tested on the following platforms:
