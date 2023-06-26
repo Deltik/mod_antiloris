@@ -336,8 +336,7 @@ download_module() {
 
   TMP=$(mktemp -qu)
   info "Downloading the antiloris module . . ."
-  wget -q "${RELEASE_URL}" -O "${TMP}"
-  if [ ! -f "${TMP}" ]; then
+  if ! wget -q "${RELEASE_URL}" -O "${TMP}" || [ ! -f "${TMP}" ]; then
     crit "Failed to download the antiloris module."
     exit 1
   fi
