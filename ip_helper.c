@@ -24,7 +24,6 @@
 
 struct flexmap *create_flexmap(apr_pool_t *apr_pool) {
     struct flexmap *new_flexmap = malloc(sizeof(struct flexmap));
-    new_flexmap->level = 0;
     new_flexmap->bitmap = roaring_bitmap_create();
     new_flexmap->apr_pool = apr_pool;
     new_flexmap->next = apr_hash_make(new_flexmap->apr_pool);
@@ -91,7 +90,6 @@ void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *i
         struct flexmap *next_flexmap = apr_hash_get(flexmap->next, &ip_lower[level], sizeof(ip_lower[level]));
         if (next_flexmap == NULL) {
             next_flexmap = create_flexmap(apr_pool);
-            next_flexmap->level = level + 1;
             key = apr_palloc(apr_pool, key_size);
             memcpy(key, &ip_lower[level], key_size);
             apr_hash_set(flexmap->next, key, key_size, next_flexmap);
@@ -104,7 +102,6 @@ void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *i
         struct flexmap *next_flexmap_lower = apr_hash_get(flexmap->next, &ip_lower[level], sizeof(ip_lower[level]));
         if (next_flexmap_lower == NULL) {
             next_flexmap_lower = create_flexmap(apr_pool);
-            next_flexmap_lower->level = level + 1;
             key = apr_palloc(apr_pool, key_size);
             memcpy(key, &ip_lower[level], key_size);
             apr_hash_set(flexmap->next, key, key_size, next_flexmap_lower);
@@ -113,7 +110,6 @@ void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *i
         struct flexmap *next_flexmap_upper = apr_hash_get(flexmap->next, &ip_upper[level], sizeof(ip_upper[level]));
         if (next_flexmap_upper == NULL) {
             next_flexmap_upper = create_flexmap(apr_pool);
-            next_flexmap_upper->level = level + 1;
             key = apr_palloc(apr_pool, key_size);
             memcpy(key, &ip_upper[level], key_size);
             apr_hash_set(flexmap->next, key, key_size, next_flexmap_upper);

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## v0.7.1 (UNRELEASED)
 
+### Changed
+
+- Removed unused variables from ignore list structure for very minor memory and time savings
+
 ### Fixed
 
 - A global variable (the Apache Portable Runtime pool) was breaking compilation, so it is now a local variable that is passed down as needed. (#1)

@@ -30,11 +30,9 @@
  * A huge bitmap. Currently hard-coded to support 128 bits.
  */
 struct flexmap {
-    uint8_t level;
     roaring_bitmap_t *bitmap;
     apr_pool_t *apr_pool;
     apr_hash_t *next;
-    struct flexmap *prev;
 };
 
 /**
