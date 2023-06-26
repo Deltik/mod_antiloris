@@ -18,8 +18,7 @@
 # limitations under the License.
 #
 
-LATEST_VERSION="v0.7.0"
-RELEASE_URL="https://github.com/Deltik/mod_antiloris/releases/download/${LATEST_VERSION}/mod_antiloris.so"
+RELEASE_URL_TEMPLATE="https://github.com/Deltik/mod_antiloris/releases/download/{VERSION}/mod_antiloris.so"
 
 usage() {
   cat <<EOF
@@ -29,10 +28,29 @@ Installs mod_antiloris on an existing Apache HTTP Server
 
 options:
   -h, --help                show this help message and exit
-  --version VERSION         install named version (e.g. "v0.7.0") rather than the default
+  --version VERSION         install the named version (e.g. "v0.7.0") rather than the latest version
   -y, --accept-disclaimer   bypass the disclaimer prompt
   --uninstall               uninstall mod_antiloris and remove its configuration
 EOF
+}
+
+get_all_tags() {
+  tags=$(wget -qO- https://api.github.com/repos/Deltik/mod_antiloris/tags)
+  echo "${tags}" | tr '},' '\n' | grep '"name":' | awk '{ print substr($2, 2, length($2)-2)}' | sort -Vr
+}
+
+get_latest_version() {
+  all_tags="$(get_all_tags)"
+  for tag in ${all_tags}; do
+    release_url=$(echo "${RELEASE_URL_TEMPLATE}" | sed "s/{VERSION}/${tag}/g")
+    http_code=$(wget --server-response -O /dev/null "${release_url}" 2>&1 | awk '/^  HTTP/{print $2}' | tail -n 1)
+    if [ "$http_code" -lt 200 ] || [ "$http_code" -gt 299 ]; then
+      continue
+    else
+      echo "${tag}"
+      return
+    fi
+  done
 }
 
 parse_args() {
@@ -44,8 +62,7 @@ parse_args() {
       ;;
     --version)
       shift
-      LATEST_VERSION="$1"
-      RELEASE_URL="https://github.com/Deltik/mod_antiloris/releases/download/${LATEST_VERSION}/mod_antiloris.so"
+      DESIRED_VERSION="$1"
       ;;
     -y | --accept-disclaimer)
       ACCEPT_DISCLAIMER="--accept-disclaimer"
@@ -184,6 +201,16 @@ check_dependencies() {
 }
 
 download_module() {
+  if [ -z "$DESIRED_VERSION" ]; then
+    echo "[+] Getting the latest version of the antiloris module..."
+    DESIRED_VERSION="$(get_latest_version)"
+    echo "[+] Latest version determined: ${DESIRED_VERSION}"
+  fi
+
+  if [ -z "$RELEASE_URL" ]; then
+    RELEASE_URL="$(echo "${RELEASE_URL_TEMPLATE}" | sed "s/{VERSION}/${DESIRED_VERSION}/g")"
+  fi
+
   TMP=$(mktemp -qu)
   echo "[+] Downloading the antiloris module..."
   wget -q "${RELEASE_URL}" -O "${TMP}"
