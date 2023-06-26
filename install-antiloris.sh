@@ -2,8 +2,9 @@
 
 #
 # mod_antiloris installation script
+#
 # Copyright (C) 2023 Filippo Lauria
-# Copyright (C) 2023 Deltik
+# Copyright (C) 2023 Deltik <https://www.deltik.net/>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
