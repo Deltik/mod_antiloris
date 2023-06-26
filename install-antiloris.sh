@@ -358,7 +358,7 @@ create_config() {
 <IfModule antiloris_module>
     # Maximum simultaneous connections in any state per IP address.
     # If set to 0, this limit does not apply.
-    # IPTotalLimit    10
+    IPTotalLimit      30
 
     # Maximum simultaneous idle connections per IP address.
     # If set to 0, this limit does not apply.
@@ -374,7 +374,7 @@ create_config() {
 
     # Space-delimited list of IPv4 and IPv6 addresses, ranges, or CIDRs
     # which should not be subjected to any limits by this module.
-    # This directive overrides is an alias for LocalIPs directive.
+    # This directive overrides the value of the LocalIPs directive.
     # WhitelistIPs    127.0.0.1 ::1
 </IfModule>
 
