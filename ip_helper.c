@@ -22,11 +22,12 @@
 #include <apr_hash.h>
 #include "ip_helper.h"
 
-struct flexmap *create_flexmap() {
+struct flexmap *create_flexmap(apr_pool_t *apr_pool) {
     struct flexmap *new_flexmap = malloc(sizeof(struct flexmap));
     new_flexmap->level = 0;
     new_flexmap->bitmap = roaring_bitmap_create();
-    new_flexmap->next = apr_hash_make(apr_pool);
+    new_flexmap->apr_pool = apr_pool;
+    new_flexmap->next = apr_hash_make(new_flexmap->apr_pool);
     return new_flexmap;
 }
 
@@ -57,6 +58,8 @@ bool parse_ipv6_address(char *input, uint32_t *dest) {
 }
 
 void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *ip_upper, int level) {
+    apr_pool_t *apr_pool = flexmap->apr_pool;
+
     if (ip_upper[level] - ip_lower[level] > 1) {
         // Fill bits in between
         roaring_bitmap_add_range_closed(flexmap->bitmap, ip_lower[level] + 1, ip_upper[level] - 1);
@@ -87,7 +90,7 @@ void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *i
     } else if (ip_lower[level] == ip_upper[level]) {
         struct flexmap *next_flexmap = apr_hash_get(flexmap->next, &ip_lower[level], sizeof(ip_lower[level]));
         if (next_flexmap == NULL) {
-            next_flexmap = create_flexmap();
+            next_flexmap = create_flexmap(apr_pool);
             next_flexmap->level = level + 1;
             key = apr_palloc(apr_pool, key_size);
             memcpy(key, &ip_lower[level], key_size);
@@ -100,7 +103,7 @@ void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *i
         uint32_t next_ip_upper[4] = {UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX};
         struct flexmap *next_flexmap_lower = apr_hash_get(flexmap->next, &ip_lower[level], sizeof(ip_lower[level]));
         if (next_flexmap_lower == NULL) {
-            next_flexmap_lower = create_flexmap();
+            next_flexmap_lower = create_flexmap(apr_pool);
             next_flexmap_lower->level = level + 1;
             key = apr_palloc(apr_pool, key_size);
             memcpy(key, &ip_lower[level], key_size);
@@ -109,7 +112,7 @@ void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *i
         flexmap_fill_range(next_flexmap_lower, ip_lower, next_ip_upper, level + 1);
         struct flexmap *next_flexmap_upper = apr_hash_get(flexmap->next, &ip_upper[level], sizeof(ip_upper[level]));
         if (next_flexmap_upper == NULL) {
-            next_flexmap_upper = create_flexmap();
+            next_flexmap_upper = create_flexmap(apr_pool);
             next_flexmap_upper->level = level + 1;
             key = apr_palloc(apr_pool, key_size);
             memcpy(key, &ip_upper[level], key_size);

@@ -78,14 +78,13 @@ typedef struct {
 
 /** Create per-server configuration structure */
 static void *create_config(apr_pool_t *p, server_rec *s) {
-    apr_pool = p;
     antiloris_config *conf = apr_pcalloc(p, sizeof(*conf));
 
     conf->total_limit = ANTILORIS_DEFAULT_MAX_CONN_TOTAL;
     conf->read_limit = ANTILORIS_DEFAULT_MAX_CONN_READ;
     conf->write_limit = ANTILORIS_DEFAULT_MAX_CONN_WRITE;
     conf->other_limit = ANTILORIS_DEFAULT_MAX_CONN_OTHER;
-    conf->ip_whitelist = create_flexmap();
+    conf->ip_whitelist = create_flexmap(p);
 
     return conf;
 }

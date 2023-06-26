@@ -24,7 +24,7 @@
 apr_pool_t *apr_pool;
 
 START_TEST(test_single_ip_whitelist) {
-    struct flexmap *whitelist = create_flexmap();
+    struct flexmap *whitelist = create_flexmap(apr_pool);
     char input[] = "192.168.168.192";
     int rc = whitelist_ip(whitelist, input);
     ck_assert_int_eq(0, rc);
@@ -35,7 +35,7 @@ START_TEST(test_single_ip_whitelist) {
 }
 
 START_TEST(test_single_cidr_whitelist) {
-    struct flexmap *whitelist = create_flexmap();
+    struct flexmap *whitelist = create_flexmap(apr_pool);
     char input[] = "192.168.0.0/24";
     int rc = whitelist_ip(whitelist, input);
     ck_assert_int_eq(0, rc);
@@ -59,7 +59,7 @@ START_TEST(test_single_cidr_whitelist) {
 END_TEST
 
 START_TEST(test_single_range_whitelist) {
-    struct flexmap *whitelist = create_flexmap();
+    struct flexmap *whitelist = create_flexmap(apr_pool);
     char input[] = "192.168.0.128-192.168.1.127";
     int rc = whitelist_ip(whitelist, input);
     ck_assert_int_eq(0, rc);
@@ -77,7 +77,7 @@ START_TEST(test_single_range_whitelist) {
 END_TEST
 
 START_TEST(test_big_range_whitelist) {
-    struct flexmap *whitelist = create_flexmap();
+    struct flexmap *whitelist = create_flexmap(apr_pool);
     char input[] = "0:0:0:0:0:0:0:0-2:2:2:2:2:2:2:2";
     int rc = whitelist_ip(whitelist, input);
     ck_assert_int_eq(0, rc);
@@ -102,7 +102,7 @@ START_TEST(test_big_range_whitelist) {
 END_TEST
 
 START_TEST(test_multiple_whitelist) {
-    struct flexmap *whitelist = create_flexmap();
+    struct flexmap *whitelist = create_flexmap(apr_pool);
     char input[INET6_ADDRSTRLEN];
     strcpy(input, "10.0.0.0/8");
     whitelist_ip(whitelist, input);
@@ -127,7 +127,7 @@ START_TEST(test_multiple_whitelist) {
 END_TEST
 
 START_TEST(test_for_bugs_in_fill_between_logic) {
-    struct flexmap *whitelist = create_flexmap();
+    struct flexmap *whitelist = create_flexmap(apr_pool);
     char input[INET6_ADDRSTRLEN];
     strcpy(input, "ffff:fffe::-ffff:ffff::");
     whitelist_ip(whitelist, input);

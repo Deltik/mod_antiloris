@@ -27,16 +27,12 @@
 #define ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER 252
 
 /**
- * Global pointer to an Apache Portable Runtime memory pool
- */
-apr_pool_t *apr_pool;
-
-/**
  * A huge bitmap. Currently hard-coded to support 128 bits.
  */
 struct flexmap {
     uint8_t level;
     roaring_bitmap_t *bitmap;
+    apr_pool_t *apr_pool;
     apr_hash_t *next;
     struct flexmap *prev;
 };
@@ -45,7 +41,7 @@ struct flexmap {
  * Allocates a new huge bitmap
  * @return A fully initialized huge bitmap
  */
-struct flexmap *create_flexmap();
+struct flexmap *create_flexmap(apr_pool_t *apr_pool);
 
 /**
  * Convert an IPv4 address to an IPv4-mapped IPv6 address
