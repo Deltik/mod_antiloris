@@ -31,6 +31,25 @@ struct flexmap *create_flexmap(apr_pool_t *apr_pool) {
     return new_flexmap;
 }
 
+void free_flexmap(struct flexmap *flexmap) {
+    if (flexmap == NULL) return;
+
+    roaring_bitmap_free(flexmap->bitmap);
+
+    // Free nested flexmaps
+    apr_hash_index_t *hash_index;
+    void *val;
+    for (hash_index = apr_hash_first(flexmap->apr_pool, flexmap->next);
+         hash_index;
+         hash_index = apr_hash_next(hash_index)) {
+        apr_hash_this(hash_index, NULL, NULL, &val);
+        free_flexmap(val);
+    }
+
+    free(flexmap);
+}
+
+
 bool auto_convert_ipv4_to_ipv6(char *input_ip) {
     if (strstr(input_ip, ":") == NULL) {
         char ipv4_to_ipv6_mapper[] = "::ffff:";
@@ -73,8 +92,7 @@ void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *i
              hash_index = apr_hash_next(hash_index)) {
             apr_hash_this(hash_index, (const void **) &key, (apr_ssize_t *) &key_length, (void **) &next);
             if (*key > ip_lower[level] && *key < ip_upper[level]) {
-                roaring_bitmap_free(next->bitmap);
-                free(next);
+                free_flexmap(next);
                 apr_hash_set(flexmap->next, key, *key_length, NULL);
                 free(key);
             }

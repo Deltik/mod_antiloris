@@ -43,6 +43,12 @@ struct flexmap {
 struct flexmap *create_flexmap(apr_pool_t *apr_pool);
 
 /**
+ * Frees a huge bitmap and all of its nested bitmaps
+ * @param flexmap The huge bitmap to free
+ */
+void free_flexmap(struct flexmap *flexmap);
+
+/**
  * Convert an IPv4 address to an IPv4-mapped IPv6 address
  *
  * Does not change the input if the input is already an IPv6 address.

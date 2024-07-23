@@ -186,6 +186,12 @@ static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, co
     return NULL;
 }
 
+static apr_status_t antiloris_cleanup(void *data) {
+    antiloris_config *conf = (antiloris_config *) data;
+    free_flexmap(conf->ip_whitelist);
+    return APR_SUCCESS;
+}
+
 /** Configuration directives */
 static command_rec antiloris_cmds[] = {
         AP_INIT_TAKE1("IPTotalLimit", ip_total_limit_config_cmd, NULL, RSRC_CONF,
@@ -222,6 +228,9 @@ static int post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, serve
 
     ap_mpm_query(AP_MPMQ_HARD_LIMIT_THREADS, &thread_limit);
     ap_mpm_query(AP_MPMQ_HARD_LIMIT_DAEMONS, &server_limit);
+
+    antiloris_config *conf = ap_get_module_config(s->module_config, &antiloris_module);
+    apr_pool_cleanup_register(p, conf, antiloris_cleanup, apr_pool_cleanup_null);
 
     ap_add_version_component(p, MODULE_NAME "/" MODULE_VERSION);
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, MODULE_NAME
