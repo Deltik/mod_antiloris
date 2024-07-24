@@ -38,7 +38,7 @@
 #include <stdlib.h>
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.7.1"
+#define MODULE_VERSION "0.7.2"
 #define ANTILORIS_DEFAULT_MAX_CONN_TOTAL 30
 #define ANTILORIS_DEFAULT_MAX_CONN_READ 10
 #define ANTILORIS_DEFAULT_MAX_CONN_WRITE 10
