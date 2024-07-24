@@ -1,7 +1,7 @@
 /*
  ip_helper.c - IP range ignore list implementation using nested bitmaps
 
- Copyright (C) 2019-2023 Deltik <https://www.deltik.net/>
+ Copyright (C) 2019-2024 Deltik <https://www.deltik.net/>
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
