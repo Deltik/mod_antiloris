@@ -311,7 +311,7 @@ int parse_ip_range_cidr(char *input, struct in6_addr *ip_lower, struct in6_addr 
     return 0;
 }
 
-int whitelist_ip(patricia_trie *whitelist, char *input) {
+int exempt_ip(patricia_trie *allowlist, char *input) {
     struct in6_addr ip_lower, ip_upper;
     int rc;
 
@@ -325,12 +325,12 @@ int whitelist_ip(patricia_trie *whitelist, char *input) {
     // Disallow lower IP greater than upper IP
     if (memcmp(&ip_lower, &ip_upper, sizeof(struct in6_addr)) > 0) return ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER;
 
-    insert_range(whitelist, ip_lower, ip_upper);
+    insert_range(allowlist, ip_lower, ip_upper);
 
     return 0;
 }
 
-bool is_ip_whitelisted(char *ip_input, patricia_trie *whitelist) {
+bool is_ip_exempted(char *ip_input, patricia_trie *allowlist) {
     char ip[INET6_ADDRSTRLEN];
     strncpy(ip, ip_input, INET6_ADDRSTRLEN - 1);
     ip[INET6_ADDRSTRLEN - 1] = '\0';
@@ -339,5 +339,5 @@ bool is_ip_whitelisted(char *ip_input, patricia_trie *whitelist) {
     auto_convert_ipv4_to_ipv6(ip);
     if (!parse_ipv6_address(ip, &ip_test)) return false;
 
-    return patricia_contains(whitelist, ip_test);
+    return patricia_contains(allowlist, ip_test);
 }

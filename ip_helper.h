@@ -84,20 +84,20 @@ int bit_at(const struct in6_addr *ip, int bit);
 void insert_range(patricia_trie *trie, struct in6_addr start, struct in6_addr end);
 
 /**
- * Adds the IP address, IP address range, or a CIDR range to the huge bitmap
- * @param whitelist The huge bitmap
+ * Adds the IP address, IP address range, or a CIDR range to the PATRICIA trie
+ * @param allowlist The PATRICIA trie to add to
  * @param input A single IP address with an optional CIDR suffix or a hyphenated IP address range. Can be IPv4 or IPv6.
  * @return 0 if successful, error code if not successful
  */
-int whitelist_ip(patricia_trie *whitelist, char *input);
+int exempt_ip(patricia_trie *allowlist, char *input);
 
 /**
- * Check if the IP address is present in the huge bitmap
+ * Check if the IP address is present in the PATRICIA trie
  * @param ip_input A single IPv4 or IPv6 address
- * @param whitelist The huge bitmap
- * @return true if the provided IP address is present in the huge bitmap
+ * @param allowlist The PATRICIA trie to check
+ * @return true if the provided IP address is present in the PATRICIA trie, false if not
  */
-bool is_ip_whitelisted(char *ip_input, patricia_trie *whitelist);
+bool is_ip_exempted(char *ip_input, patricia_trie *allowlist);
 
 #define ANTILORIS_IP_HELPER_H
 

@@ -38,7 +38,7 @@
 #include <stdlib.h>
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.7.3"
+#define MODULE_VERSION "0.8.0"
 #define ANTILORIS_DEFAULT_MAX_CONN_TOTAL 30
 #define ANTILORIS_DEFAULT_MAX_CONN_READ 10
 #define ANTILORIS_DEFAULT_MAX_CONN_WRITE 10
@@ -69,8 +69,8 @@ typedef struct {
     signed long int write_limit;
     signed long int other_limit;
 
-    /* Whitelist IP Addresses */
-    patricia_trie *ip_whitelist;
+    /* Allowlist of IP Addresses to exempt from connection limits */
+    patricia_trie *ip_exempt;
 } antiloris_config;
 
 typedef struct {
@@ -86,7 +86,7 @@ static void *create_config(apr_pool_t *p, server_rec *s) {
     conf->read_limit = ANTILORIS_DEFAULT_MAX_CONN_READ;
     conf->write_limit = ANTILORIS_DEFAULT_MAX_CONN_WRITE;
     conf->other_limit = ANTILORIS_DEFAULT_MAX_CONN_OTHER;
-    conf->ip_whitelist = patricia_create();
+    conf->ip_exempt = patricia_create();
 
     return conf;
 }
@@ -144,16 +144,16 @@ static const char *ip_other_limit_config_cmd(cmd_parms *parms, void *_mconfig, c
     return _set_ip_limit_config_value(&_get_config(parms)->other_limit, parms, arg);
 }
 
-/** Parse WhitelistIPs/LocalIPs directive */
-static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
+/** Parse ExemptIPs/WhitelistIPs/LocalIPs directive */
+static const char *exempt_ips_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
     int rc;
-    patricia_trie *whitelist = _get_config(parms)->ip_whitelist;
+    patricia_trie *ip_allowlist = _get_config(parms)->ip_exempt;
     char input_ips[strlen(arg) + 1];
     strcpy(input_ips, arg);
     char *input_ip = strtok(input_ips, " ");
     while (input_ip != NULL) {
         char *original_input_ip = strdup(input_ip);
-        rc = whitelist_ip(whitelist, input_ip);
+        rc = exempt_ip(ip_allowlist, input_ip);
         if (rc != 0) {
             const int MAX_ERROR_STRING_LENGTH = 128;
             char error_string_buffer[MAX_ERROR_STRING_LENGTH];
@@ -188,7 +188,7 @@ static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, co
 
 static apr_status_t antiloris_cleanup(void *data) {
     antiloris_config *conf = (antiloris_config *) data;
-    patricia_free(conf->ip_whitelist);
+    patricia_free(conf->ip_exempt);
     return APR_SUCCESS;
 }
 
@@ -202,13 +202,17 @@ static command_rec antiloris_cmds[] = {
                       "the maximum number of simultaneous connections in WRITE state per IP address"),
         AP_INIT_TAKE1("IPOtherLimit", ip_other_limit_config_cmd, NULL, RSRC_CONF,
                       "the maximum number of simultaneous idle connections per IP address"),
-        AP_INIT_ITERATE("LocalIPs", whitelist_ips_config_cmd, NULL, RSRC_CONF,
+        AP_INIT_ITERATE("LocalIPs", exempt_ips_config_cmd, NULL, RSRC_CONF,
                         "a list of IPs (separated by spaces) whose connection are always allowed. "
-                        "The WhitelistIPs directive overrides this one."),
-        AP_INIT_ITERATE("WhitelistIPs", whitelist_ips_config_cmd, NULL, RSRC_CONF,
+                        "The ExemptIPs directive overrides this one."),
+        AP_INIT_ITERATE("WhitelistIPs", exempt_ips_config_cmd, NULL, RSRC_CONF,
+                        "a list of IPs (separated by spaces) whose connection are always allowed. "
+                        "This directive overrides the LocalIPs directive. "
+                        "The ExemptIPs directive overrides this one."),
+        AP_INIT_ITERATE("ExemptIPs", exempt_ips_config_cmd, NULL, RSRC_CONF,
                         "a space-delimited list of IPv4 and IPv6 addresses, ranges, or CIDRs "
                         "which should not be subjected to any limits by mod_antiloris. "
-                        "This directive overrides the LocalIPs directive."),
+                        "This directive overrides the LocalIPs and WhitelistIPs directives."),
         {NULL}
 };
 
@@ -286,8 +290,8 @@ static int pre_connection(conn_rec *c) {
     ws_record = &ap_scoreboard_image->servers[sbh->child_num][sbh->thread_num];
     apr_cpystrn(ws_record->client, remote_ip, sizeof(ws_record->client));
 
-    /* Take whitelist IPs in consideration */
-    if (is_ip_whitelisted(remote_ip, conf->ip_whitelist)) {
+    /* Take exempt IPs in consideration */
+    if (is_ip_exempted(remote_ip, conf->ip_exempt)) {
 #if AP_MODULE_MAGIC_AT_LEAST(20050101, 0)
         ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c, "Exempted from connection limit");
 #else

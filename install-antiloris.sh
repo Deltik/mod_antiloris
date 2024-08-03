@@ -375,8 +375,7 @@ create_config() {
 
     # Space-delimited list of IPv4 and IPv6 addresses, ranges, or CIDRs
     # which should not be subjected to any limits by this module.
-    # This directive overrides the value of the LocalIPs directive.
-    # WhitelistIPs    127.0.0.1 ::1
+    # ExemptIPs    127.0.0.1 ::1
 </IfModule>
 
 # vim: syntax=apache ts=4 sw=4 sts=4 sr noet

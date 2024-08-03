@@ -76,8 +76,8 @@ wget -qO- https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-an
 #### Tested Platforms
 
 The script has been tested on the following platforms:
-- Ubuntu 20.04
-- Debian 11
+- Ubuntu 24.04
+- Debian 12
 
 ### Pre-Built Module
 
@@ -154,7 +154,7 @@ LoadModule reqtimeout_module modules/mod_reqtimeout.so
 LoadModule antiloris_module modules/mod_antiloris.so
 <IfModule antiloris_module>
     IPTotalLimit 16
-    LocalIPs     127.0.0.1 ::1
+    ExemptIPs     127.0.0.1 ::1
 </IfModule>
 ```
 
@@ -165,29 +165,32 @@ The above example mitigates Slowloris DoS attacks by:
 
 ## Configuration
 
-| Directive | Default | Description | [Version](#versioning) |
-| --- | --- | --- | --- |
-| `IPTotalLimit` | `30` | Maximum simultaneous connections in any state per IP address. If set to `0`, this limit does not apply. This limit takes precedence over all other limits. | `>= 0.7` |
-| `IPOtherLimit` | `10` | Maximum simultaneous idle connections per IP address. If set to `0`, this limit does not apply. | `>= 0.6` |
-| `IPReadLimit` | `10` | Maximum simultaneous connections in READ state per IP address. If set to `0`, this limit does not apply. | `>= 0.6` |
-| `IPWriteLimit` | `10` | Maximum simultaneous connections in WRITE state per IP address. If set to `0`, this limit does not apply. | `>= 0.6` |
-| `WhitelistIPs` | _none_ | Space-delimited list of [IPv4 and IPv6 addresses, ranges, or CIDRs](#ip-addresses) which should not be subjected to any limits by this module.  This directive overrides the value of the `LocalIPs` directive. | `>= 0.7` |
+| Directive      | Default | Description                                                                                                                                                | [Version](#versioning) |
+|----------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| `IPTotalLimit` | `30`    | Maximum simultaneous connections in any state per IP address. If set to `0`, this limit does not apply. This limit takes precedence over all other limits. | `>= 0.7`               |
+| `IPOtherLimit` | `10`    | Maximum simultaneous idle connections per IP address. If set to `0`, this limit does not apply.                                                            | `>= 0.6`               |
+| `IPReadLimit`  | `10`    | Maximum simultaneous connections in READ state per IP address. If set to `0`, this limit does not apply.                                                   | `>= 0.6`               |
+| `IPWriteLimit` | `10`    | Maximum simultaneous connections in WRITE state per IP address. If set to `0`, this limit does not apply.                                                  | `>= 0.6`               |
+| `ExemptIPs`    | _none_  | Space-delimited list of [IPv4 and IPv6 addresses, ranges, or CIDRs](#ip-addresses) which should not be subjected to any limits by this module.             | `>= 0.8`               |
 
 ### Directives from Older Versions
 
 These directives no longer apply to the latest version of this module:
 
-| Directive | Default | Description | [Version](#versioning) |
-| --- | --- | --- | --- |
-| `IPReadLimit` | `10` | Maximum simultaneous connections in READ state per IP address. If set to `0`, this limit does not apply. | `>= 0.1, < 0.5.2` |
-| `IPReadLimit` | `20` | Maximum simultaneous connections in READ state per IP address. If set to `0`, this limit does not apply. | `= 0.5.2` |
-| `LocalIPs` | _none_ | List of IPs (separated by spaces), the connections of which are always allowed (not subjected to any limits) | `~> 0.6.0` |
+| Directive      | Default | Description                                                                                                                                    | [Version](#versioning) |
+|----------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| `IPReadLimit`  | `10`    | Maximum simultaneous connections in READ state per IP address. If set to `0`, this limit does not apply.                                       | `>= 0.1, < 0.5.2`      |
+| `IPReadLimit`  | `20`    | Maximum simultaneous connections in READ state per IP address. If set to `0`, this limit does not apply.                                       | `= 0.5.2`              |
+| `LocalIPs`     | _none_  | List of IPs (separated by spaces), the connections of which are always allowed (not subjected to any limits)                                   | `~> 0.6.0`             |
+| `WhitelistIPs` | _none_  | Space-delimited list of [IPv4 and IPv6 addresses, ranges, or CIDRs](#ip-addresses) which should not be subjected to any limits by this module. | `~> 0.7.0`             |
 
 ### Aliases
 
-| Directive Alias | Directive | [Version](#versioning) |
-| --- | --- | --- |
-| `LocalIPs` | `WhitelistIPs` | `>= 0.7` |
+| Directive Alias | Is Equivalent To | Applicable [Version](#versioning) |
+|-----------------|------------------|-----------------------------------|
+| `LocalIPs`      | `WhitelistIPs`   | `~> 0.7.0`                        |
+| `LocalIPs`      | `ExemptIPs`      | `>= 0.8`                          |
+| `WhitelistIPs`  | `ExemptIPs`      | `>= 0.8`                          |
 
 ### Configuration Examples
 
@@ -200,7 +203,7 @@ LoadModule antiloris_module modules/mod_antiloris.so
     IPOtherLimit 10
     IPReadLimit  10
     IPWriteLimit 10
-    LocalIPs     127.0.0.1 ::1
+    ExemptIPs     127.0.0.1 ::1
 </IfModule>
 ```
 
@@ -221,7 +224,7 @@ LoadModule antiloris_module modules/mod_antiloris.so
 ```
 LoadModule antiloris_module modules/mod_antiloris.so
 <IfModule antiloris_module>
-    WhitelistIPs 127.0.0.1 ::1 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+    ExemptIPs 127.0.0.1 ::1 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
 </IfModule>
 ```
 
@@ -309,7 +312,7 @@ Although mod_noloris in theory consumes less time and resources on every request
 |-------------------------|--------|----------|----------|------------|----------|----------|----------|-----------|
 | _none_                  | 100000 | 0.000573 | 0.001035 | 0.001123   | 0.001231 | 0.008474 | 0.001170 | 0.000300  |
 | mod_antiloris `= 0.7.2` | 100000 | 0.000539 | 0.001068 | 0.001166   | 0.001287 | 0.010362 | 0.001212 | 0.000314  |
-| mod_antiloris `= 0.7.3` | 100000 | 0.000533 | 0.001054 | 0.001151   | 0.001268 | 0.007452 | 0.001197 | 0.000293  |
+| mod_antiloris `= 0.8.0` | 100000 | 0.000533 | 0.001054 | 0.001151   | 0.001268 | 0.007452 | 0.001197 | 0.000293  |
 
 ### mod_antiloris vs. [ModSecurity](https://www.modsecurity.org/)
 
