@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v0.8.0 (UNRELEASED)
+## v0.8.0 (2024-08-03)
 
 ### Changed
 
@@ -18,33 +18,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   The [roaring bitmaps](https://github.com/RoaringBitmap/CRoaring) previously used to store IP addresses exempt from Slowloris mitigation have been replaced with a more efficient [PATRICIA trie](https://en.wikipedia.org/wiki/PATRICIA_trie) data structure.
 
-  Benchmark results for a vanilla Debian 12 Apache HTTP Server version 2.4.61 with mod_antiloris configured using `WhitelistIPs 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32`:
+  Benchmark results for a vanilla Debian 12 Apache HTTP Server version 2.4.61 with mod_antiloris configured using `ExemptIPs 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32`:
 
   | mod_antiloris version | Memory usage (idle) | Memory usage (under DoS attack from 1 IP) |
   |-----------------------|---------------------|-------------------------------------------|
   | _Not installed_       | 56.2 MiB            | 151.9 MiB                                 |
   | `= 0.7.2`             | 5342.2 MiB          | 5352.0 MiB                                |
-  | `= 0.8.0`             | 56.8 MiB            | 64.0 MiB                                  |
+  | `= 0.8.0`             | 56.8 MiB            | 64.8 MiB                                  |
 
   mod_antiloris and its configuration now occupy a mere 0.6 MiB of memory, down from 5,286 MiB in the previous version with identical settings. This represents a massive 99.988% reduction in memory footprint.
 
   The module's initialization speed has also been substantially improved, as evidenced by repeated executions of `time systemctl restart apache2.service`:
 
-  | mod_antiloris version | N   | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stdev (s) |
-  |-----------------------|-----|----------|----------|------------|----------|----------|----------|-----------|
-  | _Not installed_       | 100 | 0.086000 | 0.100000 | 0.105000   | 0.110000 | 0.119000 | 0.105060 | 0.006718  |
-  | `= 0.7.2`             | 100 | 0.818000 | 0.837750 | 0.851000   | 0.868500 | 1.037000 | 0.858580 | 0.033554  |
-  | `= 0.8.0`             | 100 | 0.084000 | 0.103000 | 0.107000   | 0.112000 | 0.122000 | 0.106850 | 0.007561  |
+  | mod_antiloris version | N   | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stddev (s) |
+  |-----------------------|-----|----------|----------|------------|----------|----------|----------|------------|
+  | _Not installed_       | 100 | 0.086000 | 0.100000 | 0.105000   | 0.110000 | 0.119000 | 0.105060 | 0.006718   |
+  | `= 0.7.2`             | 100 | 0.818000 | 0.837750 | 0.851000   | 0.868500 | 1.037000 | 0.858580 | 0.033554   |
+  | `= 0.8.0`             | 100 | 0.088000 | 0.103750 | 0.108000   | 0.111250 | 0.126000 | 0.107220 | 0.006532   |
 
-  mod_antiloris `= 0.8.0` slashes the startup time overhead by approximately 99.7% compared to its predecessor.
+  Configured with the same directives, mod_antiloris `= 0.8.0` slashes the startup time overhead by over 99.7% compared to its predecessor.
 
   Crucially, the new algorithm maintains the performance of HTTP requests, as demonstrated by timing the retrieval of a static HTML file over 100,000 iterations with 10 concurrent connections:
 
-  | mod_antiloris version | N      | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stdev (s) |
-  |-----------------------|--------|----------|----------|------------|----------|----------|----------|-----------|
-  | _Not installed_       | 100000 | 0.000573 | 0.001035 | 0.001123   | 0.001231 | 0.008474 | 0.001170 | 0.000300  |
-  | `= 0.7.2`             | 100000 | 0.000539 | 0.001068 | 0.001166   | 0.001287 | 0.010362 | 0.001212 | 0.000314  |
-  | `= 0.8.0`             | 100000 | 0.000533 | 0.001054 | 0.001151   | 0.001268 | 0.007452 | 0.001197 | 0.000293  |
+  | mod_antiloris version | N      | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stddev (s) |
+  |-----------------------|--------|----------|----------|------------|----------|----------|----------|------------|
+  | _Not installed_       | 100000 | 0.000573 | 0.001035 | 0.001123   | 0.001231 | 0.008474 | 0.001170 | 0.000300   |
+  | `= 0.7.2`             | 100000 | 0.000539 | 0.001068 | 0.001166   | 0.001287 | 0.010362 | 0.001212 | 0.000314   |
+  | `= 0.8.0`             | 100000 | 0.000510 | 0.001054 | 0.001146   | 0.001260 | 0.011931 | 0.001197 | 0.000312   |
 - Improved the parsing of IP addresses by eliminating string mutations and reducing the number of memory allocations
 
 ## v0.7.2 (2024-07-24)

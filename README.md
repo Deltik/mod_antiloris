@@ -203,7 +203,7 @@ LoadModule antiloris_module modules/mod_antiloris.so
     IPOtherLimit 10
     IPReadLimit  10
     IPWriteLimit 10
-    ExemptIPs     127.0.0.1 ::1
+    LocalIPs     127.0.0.1 ::1
 </IfModule>
 ```
 
@@ -219,7 +219,7 @@ LoadModule antiloris_module modules/mod_antiloris.so
 </IfModule>
 ```
 
-(`>= 0.7`) Default mitigation settings, but exclude [Cloudflare IP addresses](https://www.cloudflare.com/ips/) and localhost IP addresses:
+(`>= 0.8`) Default mitigation settings, but exclude [Cloudflare IP addresses](https://www.cloudflare.com/ips/) and localhost IP addresses:
 
 ```
 LoadModule antiloris_module modules/mod_antiloris.so
@@ -308,11 +308,11 @@ mod_noloris also has other drawbacks:
 
 Although mod_noloris in theory consumes less time and resources on every request (if the banlist is empty) due to the deferred connection scan, the savings are negligible.  On a test server with 150 connection slots, mod_antiloris configured with an allowlist of Cloudflare IP addresses had practically no effect on the response time.  The test was conducted by requesting a static HTML file 100000 times with 10 concurrent requests to download the entire file.  Data summary:
 
-| Slowloris mitigation    | N      | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stdev (s) |
-|-------------------------|--------|----------|----------|------------|----------|----------|----------|-----------|
-| _none_                  | 100000 | 0.000573 | 0.001035 | 0.001123   | 0.001231 | 0.008474 | 0.001170 | 0.000300  |
-| mod_antiloris `= 0.7.2` | 100000 | 0.000539 | 0.001068 | 0.001166   | 0.001287 | 0.010362 | 0.001212 | 0.000314  |
-| mod_antiloris `= 0.8.0` | 100000 | 0.000533 | 0.001054 | 0.001151   | 0.001268 | 0.007452 | 0.001197 | 0.000293  |
+| Slowloris mitigation    | N      | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stddev (s) |
+|-------------------------|--------|----------|----------|------------|----------|----------|----------|------------|
+| _none_                  | 100000 | 0.000573 | 0.001035 | 0.001123   | 0.001231 | 0.008474 | 0.001170 | 0.000300   |
+| mod_antiloris `= 0.7.2` | 100000 | 0.000539 | 0.001068 | 0.001166   | 0.001287 | 0.010362 | 0.001212 | 0.000314   |
+| mod_antiloris `= 0.8.0` | 100000 | 0.000510 | 0.001054 | 0.001146   | 0.001260 | 0.011931 | 0.001197 | 0.000312   |
 
 ### mod_antiloris vs. [ModSecurity](https://www.modsecurity.org/)
 
