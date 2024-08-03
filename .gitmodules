@@ -1,6 +1,3 @@
-[submodule "lib/croaring"]
-	path = lib/croaring
-	url = https://github.com/RoaringBitmap/CRoaring.git
 [submodule "lib/check"]
 	path = lib/check
 	url = https://github.com/libcheck/check.git

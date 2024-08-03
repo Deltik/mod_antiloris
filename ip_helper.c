@@ -1,5 +1,5 @@
 /*
- ip_helper.c - IP range ignore list implementation using nested bitmaps
+ ip_helper.c - IP range ignore list implementation using a PATRICIA trie
 
  Copyright (C) 2019-2024 Deltik <https://www.deltik.net/>
 
@@ -16,39 +16,225 @@
  limitations under the License.
  */
 
-#include <stdlib.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include <roaring.h>
-#include <apr_hash.h>
 #include "ip_helper.h"
 
-struct flexmap *create_flexmap(apr_pool_t *apr_pool) {
-    struct flexmap *new_flexmap = malloc(sizeof(struct flexmap));
-    new_flexmap->bitmap = roaring_bitmap_create();
-    new_flexmap->apr_pool = apr_pool;
-    new_flexmap->next = apr_hash_make(new_flexmap->apr_pool);
-    return new_flexmap;
+patricia_trie *patricia_create() {
+    patricia_trie *trie = malloc(sizeof(patricia_trie));
+    trie->root = NULL;
+    return trie;
 }
 
-void free_flexmap(struct flexmap *flexmap) {
-    if (flexmap == NULL) return;
+void patricia_free_node(patricia_node *node) {
+    if (node) {
+        patricia_free_node(node->left);
+        patricia_free_node(node->right);
+        free(node);
+    }
+}
 
-    roaring_bitmap_free(flexmap->bitmap);
+void patricia_free(patricia_trie *trie) {
+    if (trie == NULL) return;
 
-    // Free nested flexmaps
-    apr_hash_index_t *hash_index;
-    void *val;
-    for (hash_index = apr_hash_first(flexmap->apr_pool, flexmap->next);
-         hash_index;
-         hash_index = apr_hash_next(hash_index)) {
-        apr_hash_this(hash_index, NULL, NULL, &val);
-        free_flexmap(val);
+    patricia_free_node(trie->root);
+    free(trie);
+}
+
+int bit_at(const struct in6_addr *ip, int bit) {
+    return (int) (ntohl(ip->s6_addr32[bit / 32]) >> (31 - bit % 32)) & 1;
+}
+
+int count_common_prefix_bits(const struct in6_addr *ip1, const struct in6_addr *ip2, int max_len) {
+    int common_bits = 0;
+    int max_bits = max_len < 128 ? max_len : 128;
+
+    for (int word = 0; word < sizeof(struct in6_addr) / sizeof(uint32_t) && common_bits < max_bits; word++) {
+        uint32_t ip_xor = ntohl((*ip1).s6_addr32[word] ^ (*ip2).s6_addr32[word]);
+        if (ip_xor == 0) {
+            common_bits += 32;
+        } else {
+            common_bits += __builtin_clz(ip_xor);
+            break;
+        }
     }
 
-    free(flexmap);
+    return common_bits > max_bits ? max_bits : common_bits;
 }
 
+void patricia_insert(patricia_trie *trie, struct in6_addr ip, int prefix_len) {
+    patricia_node **node = &trie->root;
+
+    if (*node == NULL) {
+        patricia_node *new_node = malloc(sizeof(patricia_node));
+        new_node->ip = ip;  // Copy IP address
+        new_node->prefix_len = prefix_len;
+        new_node->left = new_node->right = NULL;
+        *node = new_node;
+        return;
+    }
+
+    while (true) {
+        int common_leading_bits = count_common_prefix_bits(&(*node)->ip, &ip, prefix_len);
+        // Check if same IP range is already inserted
+        if (common_leading_bits == prefix_len) {
+            return;
+        }
+        if ((*node)->prefix_len < common_leading_bits) {
+            // Check if new IP range is fully within an existing IP range
+            if ((*node)->left == NULL && (*node)->right == NULL) {
+                return;
+            }
+            bool next_bit = bit_at(&ip, common_leading_bits + 1);
+            node = next_bit ? &(*node)->right : &(*node)->left;
+            // Descend the tree
+            if (*node != NULL) continue;
+            // Insert the new node
+            patricia_node *new_node = malloc(sizeof(patricia_node));
+            new_node->ip = ip;
+            new_node->prefix_len = prefix_len;
+            new_node->left = new_node->right = NULL;
+            *node = new_node;
+            return;
+        }
+        // Check if new IP range encompasses an existing IP range
+        if (prefix_len < common_leading_bits) {
+            patricia_free_node((*node)->left);
+            patricia_free_node((*node)->right);
+            (*node)->left = (*node)->right = NULL;
+            (*node)->prefix_len = common_leading_bits;
+            return;
+        }
+        // Descend the tree if a node exists
+        if (common_leading_bits == (*node)->prefix_len) {
+            bool next_bit = bit_at(&ip, common_leading_bits);
+            patricia_node **next_node = next_bit ? &(*node)->right : &(*node)->left;
+            if (*next_node != NULL) {
+                node = next_node;
+                continue;
+            }
+        }
+        // Split the existing node
+        patricia_node *split_node = malloc(sizeof(patricia_node));
+        memcpy(split_node, *node, sizeof(patricia_node));
+        (*node)->prefix_len = common_leading_bits;
+        bool new_bit = bit_at(&ip, common_leading_bits);
+        patricia_node *new_node = malloc(sizeof(patricia_node));
+        new_node->ip = ip;
+        new_node->prefix_len = prefix_len;
+        new_node->left = new_node->right = NULL;
+        if (new_bit == 0) {
+            (*node)->left = new_node;
+            (*node)->right = split_node;
+        } else {
+            (*node)->right = new_node;
+            (*node)->left = split_node;
+        }
+        return;
+    }
+}
+
+int patricia_contains(patricia_trie *trie, struct in6_addr ip) {
+    patricia_node **node = &trie->root;
+
+    while (*node) {
+        if ((*node)->left == NULL && (*node)->right == NULL) {
+            return count_common_prefix_bits(&(*node)->ip, &ip, (*node)->prefix_len) >=
+                   (*node)->prefix_len; // IP found or not
+        }
+
+        if (bit_at(&ip, (*node)->prefix_len)) {
+            node = &(*node)->right;
+        } else {
+            node = &(*node)->left;
+        }
+    }
+
+    return 0;  // IP not found
+}
+
+struct in6_addr sum_in6_addr(const struct in6_addr *addr1, const struct in6_addr *addr2) {
+    struct in6_addr result;
+    uint32_t carry = 0;
+    for (int i = sizeof(struct in6_addr) / sizeof(uint32_t) - 1; i >= 0; i--) {
+        uint32_t addr1_host_order = ntohl(*((uint32_t *) addr1->s6_addr32 + i));
+        uint32_t addr2_host_order = ntohl(*((uint32_t *) addr2->s6_addr32 + i));
+        uint64_t sum = (uint64_t) addr1_host_order + addr2_host_order + carry;
+        *((uint32_t *) result.s6_addr32 + i) = htonl((uint32_t) sum);
+        carry = sum >> 32;
+    }
+    return result;
+}
+
+struct in6_addr prefix_length_to_mask(int prefix_length) {
+    struct in6_addr mask = {.s6_addr32 = {0, 0, 0, 0}};
+
+    if (prefix_length < 0 || prefix_length > 128) {
+        // Return all zeros if prefix_length is out of range
+        memset(&mask, 0, sizeof(mask));
+        return mask;
+    }
+
+    // Fill the mask bits gradually
+    int remaining_bits = 128 - prefix_length;
+    for (int i = sizeof(struct in6_addr) / sizeof(uint32_t) - 1; i >= 0; i--) {
+        if (remaining_bits >= 32) {
+            mask.s6_addr32[i] = 0xFFFFFFFF; // All bits set
+            remaining_bits -= 32;
+        } else if (remaining_bits > 0) {
+            mask.s6_addr32[i] = htonl((1 << remaining_bits) - 1);
+            remaining_bits = 0;
+        } else {
+            mask.s6_addr32[i] = 0;
+        }
+    }
+
+    return mask;
+}
+
+void apply_mask(struct in6_addr *ip, struct in6_addr mask) {
+    for (int i = 0; i < sizeof(struct in6_addr) / sizeof(uint32_t); i++) {
+        *((uint32_t *) ip->s6_addr32 + i) &= ~*((uint32_t *) mask.s6_addr32 + i);
+    }
+}
+
+void insert_range(patricia_trie *trie, struct in6_addr start, struct in6_addr end) {
+    struct in6_addr ip = start;
+    while (memcmp(&ip, &end, sizeof(struct in6_addr)) <= 0) {
+        int prefix_length = 128;
+
+        // Determine the size of the largest block
+        while (prefix_length > 0) {
+            struct in6_addr mask = prefix_length_to_mask(prefix_length);
+            struct in6_addr tmp_ip;
+            for (int i = 0; i < sizeof(struct in6_addr) / sizeof(uint32_t); i++) {
+                *((uint32_t *) tmp_ip.s6_addr32 + i) =
+                        *((uint32_t *) ip.s6_addr32 + i) & ~*((uint32_t *) mask.s6_addr32 + i);
+            }
+            if (memcmp(&tmp_ip, &ip, sizeof(struct in6_addr)) != 0) {
+                prefix_length++;
+                break;
+            }
+            memcpy(&tmp_ip, &ip, sizeof(struct in6_addr));
+            for (int i = 0; i < sizeof(struct in6_addr) / sizeof(uint32_t); i++) {
+                *((uint32_t *) tmp_ip.s6_addr32 + i) |= *((uint32_t *) mask.s6_addr32 + i);
+            }
+            if (memcmp(&tmp_ip, &end, sizeof(struct in6_addr)) > 0) {
+                prefix_length++;
+                break;
+            }
+            prefix_length--;
+        }
+
+        patricia_insert(trie, ip, prefix_length);
+
+        // Move to the next block
+        struct in6_addr mask = prefix_length_to_mask(prefix_length);
+        struct in6_addr one = {.s6_addr32 = {0, 0, 0, htonl(1)}};
+        struct in6_addr addend = sum_in6_addr(&mask, &one);
+        apply_mask(&ip, mask);
+        struct in6_addr next_addr = sum_in6_addr(&ip, &addend);
+        memcpy(&ip, &next_addr, sizeof(struct in6_addr));
+    }
+}
 
 bool auto_convert_ipv4_to_ipv6(char *input_ip) {
     if (strstr(input_ip, ":") == NULL) {
@@ -62,98 +248,11 @@ bool auto_convert_ipv4_to_ipv6(char *input_ip) {
     return false;
 }
 
-bool parse_ipv6_address(char *input, uint32_t *dest) {
-    int rc = inet_pton(AF_INET6, input, dest);
-    if (rc != 1) {
-        return 0;
-    }
-
-    // Convert IP address from network byte order to host byte order
-    for (int i = 0; i < 4; i++) {
-        dest[i] = ntohl(dest[i]);
-    }
-
-    return 1;
+bool parse_ipv6_address(char *input, struct in6_addr *dest) {
+    return inet_pton(AF_INET6, input, dest) == 1;
 }
 
-void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *ip_upper, int level) {
-    apr_pool_t *apr_pool = flexmap->apr_pool;
-
-    if (ip_upper[level] - ip_lower[level] > 1) {
-        // Fill bits in between
-        roaring_bitmap_add_range_closed(flexmap->bitmap, ip_lower[level] + 1, ip_upper[level] - 1);
-        // Remove flexmaps for bits that have been filled
-        apr_hash_index_t *hash_index;
-        uint32_t *key = NULL;
-        apr_ssize_t *key_length = NULL;
-        struct flexmap *next = NULL;
-        for (hash_index = apr_hash_first(apr_pool, flexmap->next);
-             hash_index;
-             hash_index = apr_hash_next(hash_index)) {
-            apr_hash_this(hash_index, (const void **) &key, (apr_ssize_t *) &key_length, (void **) &next);
-            if (*key > ip_lower[level] && *key < ip_upper[level]) {
-                free_flexmap(next);
-                apr_hash_set(flexmap->next, key, *key_length, NULL);
-                free(key);
-            }
-        }
-    }
-
-    int key_size = sizeof(ip_lower[level]);
-    uint32_t *key;
-    if (level == 3) {
-        // Fill bits at last level
-        roaring_bitmap_add(flexmap->bitmap, ip_lower[level]);
-        roaring_bitmap_add(flexmap->bitmap, ip_upper[level]);
-    } else if (ip_lower[level] == ip_upper[level]) {
-        struct flexmap *next_flexmap = apr_hash_get(flexmap->next, &ip_lower[level], sizeof(ip_lower[level]));
-        if (next_flexmap == NULL) {
-            next_flexmap = create_flexmap(apr_pool);
-            key = apr_palloc(apr_pool, key_size);
-            memcpy(key, &ip_lower[level], key_size);
-            apr_hash_set(flexmap->next, key, key_size, next_flexmap);
-        }
-        flexmap_fill_range(next_flexmap, ip_lower, ip_upper, level + 1);
-    } else {
-        // Recursively fill bits at next levels
-        uint32_t next_ip_lower[4] = {0, 0, 0, 0};
-        uint32_t next_ip_upper[4] = {UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX};
-        struct flexmap *next_flexmap_lower = apr_hash_get(flexmap->next, &ip_lower[level], sizeof(ip_lower[level]));
-        if (next_flexmap_lower == NULL) {
-            next_flexmap_lower = create_flexmap(apr_pool);
-            key = apr_palloc(apr_pool, key_size);
-            memcpy(key, &ip_lower[level], key_size);
-            apr_hash_set(flexmap->next, key, key_size, next_flexmap_lower);
-        }
-        flexmap_fill_range(next_flexmap_lower, ip_lower, next_ip_upper, level + 1);
-        struct flexmap *next_flexmap_upper = apr_hash_get(flexmap->next, &ip_upper[level], sizeof(ip_upper[level]));
-        if (next_flexmap_upper == NULL) {
-            next_flexmap_upper = create_flexmap(apr_pool);
-            key = apr_palloc(apr_pool, key_size);
-            memcpy(key, &ip_upper[level], key_size);
-            apr_hash_set(flexmap->next, key, key_size, next_flexmap_upper);
-        }
-        flexmap_fill_range(next_flexmap_upper, next_ip_lower, ip_upper, level + 1);
-    }
-}
-
-bool _flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address, int level) {
-    if (roaring_bitmap_contains(flexmap->bitmap, ip_address[level])) {
-        return true;
-    }
-
-    struct flexmap *next_flexmap = apr_hash_get(flexmap->next, &ip_address[level], sizeof(ip_address[level]));
-    if (next_flexmap != NULL) {
-        return _flexmap_contains(next_flexmap, ip_address, level + 1);
-    }
-    return false;
-}
-
-bool flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address) {
-    return _flexmap_contains(flexmap, ip_address, 0);
-}
-
-int parse_ip_range_hyphenated(char *input, uint32_t *ip_lower, uint32_t *ip_upper) {
+int parse_ip_range_hyphenated(char *input, struct in6_addr *ip_lower, struct in6_addr *ip_upper) {
     char input_ip_lower[INET6_ADDRSTRLEN];
     strncpy(input_ip_lower, strtok(input, "-"), INET6_ADDRSTRLEN - 1);
     char input_ip_upper[INET6_ADDRSTRLEN];
@@ -168,7 +267,7 @@ int parse_ip_range_hyphenated(char *input, uint32_t *ip_lower, uint32_t *ip_uppe
     return 0;
 }
 
-int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upper) {
+int parse_ip_range_cidr(char *input, struct in6_addr *ip_lower, struct in6_addr *ip_upper) {
     bool converted_to_ipv6;
     char input_ip_lower[INET6_ADDRSTRLEN];
     strncpy(input_ip_lower, strtok(input, "/"), INET6_ADDRSTRLEN - 1);
@@ -197,53 +296,48 @@ int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upper) {
     if (!parse_ipv6_address(input_ip_lower, ip_lower)) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
 
     // Validate netmask and fill bits for upper bound
-    memcpy(ip_upper, ip_lower, 16);
+    memcpy(ip_upper, ip_lower, sizeof(struct in6_addr));
     for (uint8_t i = raw_cidr; i < 128; i++) {
-        bool bit = ip_lower[i / 32u] >> (31u - i % 32u) & 0x01u;
+        bool bit = ((ip_lower->s6_addr[i / 8u]) >> (7u - i % 8u)) & 0x01u;
 
         // Disallow IP inside mask
         if (bit) {
             return ANTILORIS_CONFIG_ERROR_IP_IN_NETMASK;
         }
 
-        ip_upper[i / 32u] |= (1u << (31u - i % 32u));
+        ip_upper->s6_addr[i / 8u] |= (1u << (7u - i % 8u));
     }
 
     return 0;
 }
 
-int whitelist_ip(struct flexmap *whitelist, char *input) {
-    uint32_t ip_lower[4];
-    uint32_t ip_upper[4];
-    int rc = 0;
+int whitelist_ip(patricia_trie *whitelist, char *input) {
+    struct in6_addr ip_lower, ip_upper;
+    int rc;
 
-    if (strstr(input, "-")) {
-        rc = parse_ip_range_hyphenated(input, ip_lower, ip_upper);
+    if (strchr(input, '-')) {
+        rc = parse_ip_range_hyphenated(input, &ip_lower, &ip_upper);
     } else {
-        rc = parse_ip_range_cidr(input, ip_lower, ip_upper);
+        rc = parse_ip_range_cidr(input, &ip_lower, &ip_upper);
     }
-
-    // Disallow lower IP greater than upper IP
-    for (int level = 0; level < 4; level++) {
-        if (ip_lower[level] > ip_upper[level]) return ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER;
-    }
-
     if (rc != 0) return rc;
 
-    flexmap_fill_range(whitelist, ip_lower, ip_upper, 0);
+    // Disallow lower IP greater than upper IP
+    if (memcmp(&ip_lower, &ip_upper, sizeof(struct in6_addr)) > 0) return ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER;
+
+    insert_range(whitelist, ip_lower, ip_upper);
 
     return 0;
 }
 
-bool is_ip_whitelisted(char *ip_input, struct flexmap *whitelist) {
+bool is_ip_whitelisted(char *ip_input, patricia_trie *whitelist) {
     char ip[INET6_ADDRSTRLEN];
-    memcpy(ip, ip_input, INET6_ADDRSTRLEN - 1);
-    uint32_t ip_test[4];
+    strncpy(ip, ip_input, INET6_ADDRSTRLEN - 1);
+    ip[INET6_ADDRSTRLEN - 1] = '\0';
+
+    struct in6_addr ip_test;
     auto_convert_ipv4_to_ipv6(ip);
-    parse_ipv6_address(ip, ip_test);
-    if (flexmap_contains(whitelist, ip_test)) {
-        return true;
-    } else {
-        return false;
-    }
+    if (!parse_ipv6_address(ip, &ip_test)) return false;
+
+    return patricia_contains(whitelist, ip_test);
 }

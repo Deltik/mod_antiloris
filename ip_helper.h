@@ -1,5 +1,5 @@
 /*
- ip_helper.h - IP range ignore list implementation using nested bitmaps
+ ip_helper.h - IP range ignore list implementation using a PATRICIA trie
 
  Copyright (C) 2019-2024 Deltik <https://www.deltik.net/>
 
@@ -16,11 +16,14 @@
  limitations under the License.
  */
 
+#include <arpa/inet.h>
+#include <inttypes.h>
 #include <stdbool.h>
-#include <roaring.h>
-#include <apr_hash.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#ifndef ANTILORIS_IPV6_PLAYGROUND_H
+#ifndef ANTILORIS_IP_HELPER_H
 
 #define ANTILORIS_CONFIG_ERROR_IP_PARSE 255
 #define ANTILORIS_CONFIG_ERROR_IP_CIDR 254
@@ -28,88 +31,57 @@
 #define ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER 252
 
 /**
- * A huge bitmap. Currently hard-coded to support 128 bits.
+ * A PATRICIA trie node. Hard-coded to support 128-bit IP addresses.
  */
-struct flexmap {
-    roaring_bitmap_t *bitmap;
-    apr_pool_t *apr_pool;
-    apr_hash_t *next;
-};
+typedef struct patricia_node {
+    struct patricia_node *left, *right;
+    struct in6_addr ip;
+    int prefix_len;
+} patricia_node;
 
 /**
- * Allocates a new huge bitmap
- * @return A fully initialized huge bitmap
+ * A PATRICIA trie
  */
-struct flexmap *create_flexmap(apr_pool_t *apr_pool);
+typedef struct {
+    patricia_node *root;
+} patricia_trie;
 
 /**
- * Frees a huge bitmap and all of its nested bitmaps
- * @param flexmap The huge bitmap to free
+ * Allocates a new PATRICIA trie
  */
-void free_flexmap(struct flexmap *flexmap);
+patricia_trie* patricia_create();
 
 /**
- * Convert an IPv4 address to an IPv4-mapped IPv6 address
- *
- * Does not change the input if the input is already an IPv6 address.
- * Input must be at least INET6_ADDRSTRLEN long.
- * @param input_ip String to convert into an IPv6 address
- * @return true if input was converted to IPv6
+ * Free a PATRICIA trie node and all of its children
+ * @param node The node to free
  */
-bool auto_convert_ipv4_to_ipv6(char *input_ip);
+void patricia_free_node(patricia_node *node);
 
 /**
- * Parse an IPv6 string into host-compatible binary
- * @param input IPv6 input string
- * @param dest 128 bits of binary storage
- * @return true if the parsing was successful, false otherwise
+ * Free a PATRICIA trie from the root node
+ * @param trie The trie to free
  */
-bool parse_ipv6_address(char *input, uint32_t *dest);
+void patricia_free(patricia_trie *trie);
 
 /**
- * Inclusively set all bits to true from ip_lower to ip_upper
- * @param flexmap The bitmap struct for very large bitmaps
- * @param ip_lower The smallest number, which will also be set to true
- * @param ip_upper The biggest number, which will also be set to true
- * @param level Recursion depth; starts at 0 and counts up
+ * Insert an IP address of a given prefix length into the PATRICIA trie
+ * @param trie The trie to insert into
+ * @param ip The IP address to insert
+ * @param prefix_len The prefix length of the IP address
  */
-void flexmap_fill_range(struct flexmap *flexmap, uint32_t *ip_lower, uint32_t *ip_upper, int level);
+void patricia_insert(patricia_trie *trie, struct in6_addr ip, int prefix_len);
 
 /**
- * Check if the huge bitmap includes the provided number
- * @param flexmap The huge bitmap to check
- * @param ip_address The number to check if it's true in the bitmap
- * @param level Recursion depth; starts at 0 and counts up
- * @return true if the number is present in the huge bitmap
+ * Check if an IP address is in the PATRICIA trie
+ * @param trie The trie to check
+ * @param ip The IP address to check
+ * @return 1 if the IP address is in the trie, 0 if not
  */
-bool _flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address, int level);
+int patricia_contains(patricia_trie *trie, struct in6_addr ip);
 
-/**
- * Check if the huge bitmap includes the provided number
- * @param flexmap The huge bitmap to check
- * @param ip_address The number to check if it's true in the bitmap
- * @param level Recursion depth; starts at 0 and counts up
- * @return true if the number is present in the huge bitmap
- */
-bool flexmap_contains(struct flexmap *flexmap, uint32_t *ip_address);
+int bit_at(const struct in6_addr *ip, int bit);
 
-/**
- * Takes a hyphenated IP address range and calculates the upper and lower bounds
- * @param input A hyphenated IP address range. Can be IPv4, IPv6, or both.
- * @param ip_lower 16-byte array representing the lower bound of the IP address range
- * @param ip_upper 16-byte array representing the upper bound of the IP address range
- * @return 0 if successful, error code if not successful
- */
-int parse_ip_range_hyphenated(char *input, uint32_t *ip_lower, uint32_t *ip_upper);
-
-/**
- * Takes a single IP address or CIDR notation and calculates the upper and lower bounds
- * @param input A single IP address with an optional CIDR suffix. Can be IPv4 or IPv6.
- * @param ip_lower 16-byte array representing the lower bound of the IP address range
- * @param ip_upper 16-byte array representing the upper bound of the IP address range
- * @return 0 if successful, error code if not successful
- */
-int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upper);
+void insert_range(patricia_trie *trie, struct in6_addr start, struct in6_addr end);
 
 /**
  * Adds the IP address, IP address range, or a CIDR range to the huge bitmap
@@ -117,7 +89,7 @@ int parse_ip_range_cidr(char *input, uint32_t *ip_lower, uint32_t *ip_upper);
  * @param input A single IP address with an optional CIDR suffix or a hyphenated IP address range. Can be IPv4 or IPv6.
  * @return 0 if successful, error code if not successful
  */
-int whitelist_ip(struct flexmap *whitelist, char *input);
+int whitelist_ip(patricia_trie *whitelist, char *input);
 
 /**
  * Check if the IP address is present in the huge bitmap
@@ -125,8 +97,8 @@ int whitelist_ip(struct flexmap *whitelist, char *input);
  * @param whitelist The huge bitmap
  * @return true if the provided IP address is present in the huge bitmap
  */
-bool is_ip_whitelisted(char *ip_input, struct flexmap *whitelist);
+bool is_ip_whitelisted(char *ip_input, patricia_trie *whitelist);
 
-#define ANTILORIS_IPV6_PLAYGROUND_H
+#define ANTILORIS_IP_HELPER_H
 
-#endif //ANTILORIS_IPV6_PLAYGROUND_H
+#endif //ANTILORIS_IP_HELPER_H

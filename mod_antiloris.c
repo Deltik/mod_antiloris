@@ -38,7 +38,7 @@
 #include <stdlib.h>
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.7.2"
+#define MODULE_VERSION "0.7.3"
 #define ANTILORIS_DEFAULT_MAX_CONN_TOTAL 30
 #define ANTILORIS_DEFAULT_MAX_CONN_READ 10
 #define ANTILORIS_DEFAULT_MAX_CONN_WRITE 10
@@ -70,7 +70,7 @@ typedef struct {
     signed long int other_limit;
 
     /* Whitelist IP Addresses */
-    struct flexmap *ip_whitelist;
+    patricia_trie *ip_whitelist;
 } antiloris_config;
 
 typedef struct {
@@ -86,7 +86,7 @@ static void *create_config(apr_pool_t *p, server_rec *s) {
     conf->read_limit = ANTILORIS_DEFAULT_MAX_CONN_READ;
     conf->write_limit = ANTILORIS_DEFAULT_MAX_CONN_WRITE;
     conf->other_limit = ANTILORIS_DEFAULT_MAX_CONN_OTHER;
-    conf->ip_whitelist = create_flexmap(p);
+    conf->ip_whitelist = patricia_create();
 
     return conf;
 }
@@ -147,7 +147,7 @@ static const char *ip_other_limit_config_cmd(cmd_parms *parms, void *_mconfig, c
 /** Parse WhitelistIPs/LocalIPs directive */
 static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
     int rc;
-    struct flexmap *whitelist = _get_config(parms)->ip_whitelist;
+    patricia_trie *whitelist = _get_config(parms)->ip_whitelist;
     char input_ips[strlen(arg) + 1];
     strcpy(input_ips, arg);
     char *input_ip = strtok(input_ips, " ");
@@ -188,7 +188,7 @@ static const char *whitelist_ips_config_cmd(cmd_parms *parms, void *_mconfig, co
 
 static apr_status_t antiloris_cleanup(void *data) {
     antiloris_config *conf = (antiloris_config *) data;
-    free_flexmap(conf->ip_whitelist);
+    patricia_free(conf->ip_whitelist);
     return APR_SUCCESS;
 }
 

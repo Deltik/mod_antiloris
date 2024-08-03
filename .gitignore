@@ -1,1 +1,16 @@
 .idea/
+
+mod_antiloris.so
+mod_antiloris.cbp
+check_ip_helper
+
+.cmake/
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+Makefile
+build/
+cmake-build-debug/
+cmake-build-release/
+cmake_install.cmake
+Testing/
