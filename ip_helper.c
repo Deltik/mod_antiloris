@@ -248,41 +248,74 @@ bool auto_convert_ipv4_to_ipv6(char *input_ip) {
     return false;
 }
 
-bool parse_ipv6_address(char *input, struct in6_addr *dest) {
-    return inet_pton(AF_INET6, input, dest) == 1;
+bool parse_ip_address(const char *input, struct in6_addr *dest) {
+    // Try parsing as IPv6 first
+    if (strchr(input, ':') != NULL) {
+        return inet_pton(AF_INET6, input, dest) == 1;
+    }
+
+    // If not IPv6, try parsing as IPv4 and convert to IPv4-mapped IPv6
+    struct in_addr ipv4addr;
+    if (inet_pton(AF_INET, input, &ipv4addr) == 1) {
+        dest->s6_addr32[0] = 0;
+        dest->s6_addr32[1] = 0;
+        dest->s6_addr32[2] = htonl(0xffff);
+        dest->s6_addr32[3] = ipv4addr.s_addr;
+        return true;
+    }
+
+    return false;
 }
 
-int parse_ip_range_hyphenated(char *input, struct in6_addr *ip_lower, struct in6_addr *ip_upper) {
+int parse_ip_range_hyphenated(const char *input, struct in6_addr *ip_lower, struct in6_addr *ip_upper) {
+    const char *hyphen = strchr(input, '-');
+    if (!hyphen) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
+
     char input_ip_lower[INET6_ADDRSTRLEN];
-    strncpy(input_ip_lower, strtok(input, "-"), INET6_ADDRSTRLEN - 1);
     char input_ip_upper[INET6_ADDRSTRLEN];
-    strncpy(input_ip_upper, strtok(NULL, "-"), INET6_ADDRSTRLEN - 1);
 
-    auto_convert_ipv4_to_ipv6(input_ip_lower);
-    if (!parse_ipv6_address(input_ip_lower, ip_lower)) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
+    size_t lower_len = hyphen - input;
+    size_t upper_len = strlen(hyphen + 1);
 
-    auto_convert_ipv4_to_ipv6(input_ip_upper);
-    if (!parse_ipv6_address(input_ip_upper, ip_upper)) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
+    if (lower_len >= INET6_ADDRSTRLEN || upper_len >= INET6_ADDRSTRLEN) {
+        return ANTILORIS_CONFIG_ERROR_IP_PARSE;
+    }
+
+    memcpy(input_ip_lower, input, lower_len);
+    input_ip_lower[lower_len] = '\0';
+    strcpy(input_ip_upper, hyphen + 1);
+
+    if (!parse_ip_address(input_ip_lower, ip_lower)) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
+    if (!parse_ip_address(input_ip_upper, ip_upper)) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
 
     return 0;
 }
 
-int parse_ip_range_cidr(char *input, struct in6_addr *ip_lower, struct in6_addr *ip_upper) {
-    bool converted_to_ipv6;
-    char input_ip_lower[INET6_ADDRSTRLEN];
-    strncpy(input_ip_lower, strtok(input, "/"), INET6_ADDRSTRLEN - 1);
-    char *input_cidr = strtok(NULL, "/");
+int parse_ip_range_cidr(const char *input, struct in6_addr *ip_lower, struct in6_addr *ip_upper) {
+    const char *slash = strchr(input, '/');
+    char input_ip[INET6_ADDRSTRLEN];
     uint8_t raw_cidr = 128;
 
-    // Set CIDR if input contains CIDR
-    if (input_cidr != NULL) {
-        raw_cidr = strtoul(input_cidr, NULL, 10);
+    if (slash) {
+        size_t ip_len = slash - input;
+        if (ip_len >= INET6_ADDRSTRLEN) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
+        memcpy(input_ip, input, ip_len);
+        input_ip[ip_len] = '\0';
+        raw_cidr = strtoul(slash + 1, NULL, 10);
+    } else {
+        strncpy(input_ip, input, INET6_ADDRSTRLEN - 1);
+        input_ip[INET6_ADDRSTRLEN - 1] = '\0';
     }
 
-    // Convert IPv4 to IPv4-mapped IPv6
-    converted_to_ipv6 = auto_convert_ipv4_to_ipv6(input_ip_lower);
-    if (converted_to_ipv6) {
-        if (input_cidr == NULL) raw_cidr = 32;
+    if (!parse_ip_address(input_ip, ip_lower)) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
+
+    // Adjust CIDR for IPv4-mapped IPv6 addresses
+    bool is_ipv4 = (!strchr(input, ':') &&
+                    ip_lower->s6_addr32[0] == 0 &&
+                    ip_lower->s6_addr32[1] == 0 &&
+                    ip_lower->s6_addr32[2] == htonl(0xffff));
+    if (is_ipv4) {
+        if (!slash) raw_cidr = 32;
 
         // Disallow bad CIDR input for IPv4
         if (raw_cidr > 32 || raw_cidr < 0) return ANTILORIS_CONFIG_ERROR_IP_CIDR;
@@ -292,8 +325,6 @@ int parse_ip_range_cidr(char *input, struct in6_addr *ip_lower, struct in6_addr 
 
     // Disallow bad CIDR input for IPv6
     if (raw_cidr > 128 || raw_cidr < 0) return ANTILORIS_CONFIG_ERROR_IP_CIDR;
-
-    if (!parse_ipv6_address(input_ip_lower, ip_lower)) return ANTILORIS_CONFIG_ERROR_IP_PARSE;
 
     // Validate netmask and fill bits for upper bound
     memcpy(ip_upper, ip_lower, sizeof(struct in6_addr));
@@ -311,7 +342,7 @@ int parse_ip_range_cidr(char *input, struct in6_addr *ip_lower, struct in6_addr 
     return 0;
 }
 
-int exempt_ip(patricia_trie *allowlist, char *input) {
+int exempt_ip(patricia_trie *allowlist, const char *input) {
     struct in6_addr ip_lower, ip_upper;
     int rc;
 
@@ -330,14 +361,9 @@ int exempt_ip(patricia_trie *allowlist, char *input) {
     return 0;
 }
 
-bool is_ip_exempted(char *ip_input, patricia_trie *allowlist) {
-    char ip[INET6_ADDRSTRLEN];
-    strncpy(ip, ip_input, INET6_ADDRSTRLEN - 1);
-    ip[INET6_ADDRSTRLEN - 1] = '\0';
-
+bool is_ip_exempted(const char *ip_input, patricia_trie *allowlist) {
     struct in6_addr ip_test;
-    auto_convert_ipv4_to_ipv6(ip);
-    if (!parse_ipv6_address(ip, &ip_test)) return false;
+    if (!parse_ip_address(ip_input, &ip_test)) return false;
 
     return patricia_contains(allowlist, ip_test);
 }

@@ -89,7 +89,7 @@ void insert_range(patricia_trie *trie, struct in6_addr start, struct in6_addr en
  * @param input A single IP address with an optional CIDR suffix or a hyphenated IP address range. Can be IPv4 or IPv6.
  * @return 0 if successful, error code if not successful
  */
-int exempt_ip(patricia_trie *allowlist, char *input);
+int exempt_ip(patricia_trie *allowlist, const char *input);
 
 /**
  * Check if the IP address is present in the PATRICIA trie
@@ -97,7 +97,7 @@ int exempt_ip(patricia_trie *allowlist, char *input);
  * @param allowlist The PATRICIA trie to check
  * @return true if the provided IP address is present in the PATRICIA trie, false if not
  */
-bool is_ip_exempted(char *ip_input, patricia_trie *allowlist);
+bool is_ip_exempted(const char *ip_input, patricia_trie *allowlist);
 
 #define ANTILORIS_IP_HELPER_H
 

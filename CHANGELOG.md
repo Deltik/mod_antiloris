@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | _Not installed_       | 100000 | 0.000573 | 0.001035 | 0.001123   | 0.001231 | 0.008474 | 0.001170 | 0.000300  |
   | `= 0.7.2`             | 100000 | 0.000539 | 0.001068 | 0.001166   | 0.001287 | 0.010362 | 0.001212 | 0.000314  |
   | `= 0.8.0`             | 100000 | 0.000533 | 0.001054 | 0.001151   | 0.001268 | 0.007452 | 0.001197 | 0.000293  |
+- Improved the parsing of IP addresses by eliminating string mutations and reducing the number of memory allocations
 
 ## v0.7.2 (2024-07-24)
 

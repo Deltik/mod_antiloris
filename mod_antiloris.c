@@ -31,11 +31,11 @@
 #include "http_connection.h"
 #include "http_log.h"
 #include "ap_mpm.h"
-#include "apr_hash.h"
 #include "apr_strings.h"
 #include "scoreboard.h"
 #include "ip_helper.h"
 #include <stdlib.h>
+#include <ctype.h>
 
 #define MODULE_NAME "mod_antiloris"
 #define MODULE_VERSION "0.8.0"
@@ -148,39 +148,53 @@ static const char *ip_other_limit_config_cmd(cmd_parms *parms, void *_mconfig, c
 static const char *exempt_ips_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
     int rc;
     patricia_trie *ip_allowlist = _get_config(parms)->ip_exempt;
-    char input_ips[strlen(arg) + 1];
-    strcpy(input_ips, arg);
-    char *input_ip = strtok(input_ips, " ");
-    while (input_ip != NULL) {
-        char *original_input_ip = strdup(input_ip);
+    const char *input_ptr = arg;
+    const char *token_start;
+
+    while (*input_ptr != '\0') {
+        while (isspace(*input_ptr)) {
+            input_ptr++;
+        }
+        if (*input_ptr == '\0') {
+            break;
+        }
+
+        token_start = input_ptr;
+        while (!isspace(*input_ptr) && *input_ptr != '\0') {
+            input_ptr++;
+        }
+
+        size_t token_length = input_ptr - token_start;
+        char *input_ip = apr_palloc(parms->pool, token_length + 1);
+        memcpy(input_ip, token_start, token_length);
+        input_ip[token_length] = '\0';
+
         rc = exempt_ip(ip_allowlist, input_ip);
         if (rc != 0) {
             const int MAX_ERROR_STRING_LENGTH = 128;
-            char error_string_buffer[MAX_ERROR_STRING_LENGTH];
+            char *error_string = apr_palloc(parms->pool, MAX_ERROR_STRING_LENGTH);
+            const char *error_format;
             switch (rc) {
                 case ANTILORIS_CONFIG_ERROR_IP_PARSE:
-                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "Cannot parse this as an IP address: %s", original_input_ip);
+                    error_format = "Cannot parse this as an IP address: %s";
                     break;
                 case ANTILORIS_CONFIG_ERROR_IP_CIDR:
-                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "Invalid CIDR provided: %s", original_input_ip);
+                    error_format = "Invalid CIDR provided: %s";
                     break;
                 case ANTILORIS_CONFIG_ERROR_IP_IN_NETMASK:
-                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "IP address cannot have host bits in netmask: %s", original_input_ip);
+                    error_format = "IP address cannot have host bits in netmask: %s";
                     break;
                 case ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER:
-                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "Lower bound cannot be higher than upper bound in range: %s", original_input_ip);
+                    error_format = "Lower bound cannot be higher than upper bound in range: %s";
                     break;
                 default:
-                    snprintf(error_string_buffer, MAX_ERROR_STRING_LENGTH,
-                             "Unknown error (%d) parsing this IP address: %s", rc, original_input_ip);
+                    snprintf(error_string, MAX_ERROR_STRING_LENGTH,
+                             "Unknown error (%d) parsing this IP address: %s", rc, input_ip);
+                    return error_string;
             }
-            return strdup(error_string_buffer);
+            snprintf(error_string, MAX_ERROR_STRING_LENGTH, error_format, input_ip);
+            return error_string;
         }
-        input_ip = strtok(NULL, " ");
     }
 
     return NULL;
