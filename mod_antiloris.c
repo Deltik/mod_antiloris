@@ -38,7 +38,7 @@
 #include <ctype.h>
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.8.0"
+#define MODULE_VERSION "0.8.1"
 #define ANTILORIS_DEFAULT_MAX_CONN_TOTAL 30
 #define ANTILORIS_DEFAULT_MAX_CONN_READ 10
 #define ANTILORIS_DEFAULT_MAX_CONN_WRITE 10
@@ -279,6 +279,11 @@ static int _reached_ip_con_limit(const signed long int *ip_counts, antiloris_con
 
 /** Our hook at connection processing */
 static int pre_connection(conn_rec *c) {
+    /* Skip suspended connections */
+    if (!c->sbh) {
+        return DECLINED;
+    }
+
     /* Remote IP to be used in checking operations */
     char *remote_ip = c->remote_ip;
 
