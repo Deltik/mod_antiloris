@@ -19,8 +19,10 @@
 # limitations under the License.
 #
 
-TAG_SOURCE_URL="https://api.github.com/repos/Deltik/mod_antiloris/tags"
-RELEASE_URL_TEMPLATE="https://github.com/Deltik/mod_antiloris/releases/download/{VERSION}/mod_antiloris.so"
+set -e
+
+REPO_URL="https://github.com/Deltik/mod_antiloris.git"
+TEMP_DIR=""
 
 usage() {
   cat <<EOF
@@ -37,30 +39,6 @@ options:
   --no-color                don't add colors to the output
   -v, --verbose, --debug    show debug information
 EOF
-}
-
-get_all_tags() {
-  debug "Retrieving tags from ${TAG_SOURCE_URL} . . ."
-  tags=$(wget -qO- "${TAG_SOURCE_URL}")
-  echo "${tags}" | tr '},' '\n' | grep '"name":' | awk '{ print substr($2, 2, length($2)-2)}' | sort -Vr
-}
-
-get_latest_version() {
-  all_tags="$(get_all_tags)"
-  debug "All tags: $(echo "${all_tags}" | tr '\n' ' ')"
-
-  for tag in ${all_tags}; do
-    debug "Checking tag ${tag} . . ."
-    release_url=$(echo "${RELEASE_URL_TEMPLATE}" | sed "s/{VERSION}/${tag}/g")
-    http_code=$(wget --server-response -O /dev/null "${release_url}" 2>&1 | awk '/^  HTTP/{print $2}' | tail -n 1)
-    if [ "$http_code" -lt 200 ] || [ "$http_code" -gt 299 ]; then
-      debug "Tag ${tag} does not have a matching asset"
-      continue
-    else
-      echo "${tag}"
-      return
-    fi
-  done
 }
 
 COLORS_ENABLED='yes'
@@ -211,11 +189,10 @@ ensure_root() {
       warn "This script needs to be run as root. Elevating script to root with sudo."
       interpreter="$(head -1 "$0" | cut -c 3-)"
       if [ -x "$interpreter" ]; then
-        sudo "$interpreter" "$0" "$@"
+        exec sudo "$interpreter" "$0" "$@"
       else
-        sudo "$0" "$@"
+        exec sudo "$0" "$@"
       fi
-      exit $?
     else
       crit "This script needs to be run as root."
       exit 1
@@ -224,10 +201,9 @@ ensure_root() {
 }
 
 detect_os() {
-  OS=$(cat /etc/*-release | grep '^ID=' | cut -d'=' -f2 | tr '[:upper:]' '[:lower:]')
+  OS=$(. /etc/os-release && echo "$ID")
   case $OS in
   debian | ubuntu)
-    PATH_OF_MODULE="$(a2query -d)mod_antiloris.so"
     PATH_OF_MODAVAIL_DIR='/etc/apache2/mods-available'
     PATH_OF_MODENABL_DIR='/etc/apache2/mods-enabled'
     PATH_OF_LOADFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.load"
@@ -242,120 +218,71 @@ detect_os() {
   esac
 }
 
-uninstall() {
-  info "Uninstalling mod_antiloris . . ."
-
-  if [ -L "${PATH_OF_LOADLINK}" ]; then
-    debug "Removing antiloris.load symlink . . ."
-    rm -f "${PATH_OF_LOADLINK}"
-  fi
-
-  if [ -L "${PATH_OF_CONFLINK}" ]; then
-    debug "Removing antiloris.conf symlink . . ."
-    rm -f "${PATH_OF_CONFLINK}"
-  fi
-
-  if [ -f "${PATH_OF_MODULE}" ]; then
-    debug "Removing mod_antiloris.so . . ."
-    rm -f "${PATH_OF_MODULE}"
-  fi
-
-  if [ -f "${PATH_OF_LOADFILE}" ]; then
-    debug "Removing antiloris.load . . ."
-    rm -f "${PATH_OF_LOADFILE}"
-  fi
-
-  if [ -f "${PATH_OF_CONFFILE}" ]; then
-    debug "Removing antiloris.conf . . ."
-    rm -f "${PATH_OF_CONFFILE}"
-  fi
-
-  info "Restarting Apache . . ."
-  if systemctl restart apache2 2>/dev/null; then
-    info "Apache restarted successfully."
+get_module_path() {
+  if command -v a2query >/dev/null 2>&1; then
+    a2query -d
   else
-    crit "Failed to restart Apache."
-    exit 1
+    echo "/usr/lib/apache2/modules"
   fi
-
-  success "mod_antiloris uninstalled successfully."
-  exit 0
 }
 
-check_disclaimer() {
-  if [ "$ACCEPT_DISCLAIMER" != "--accept-disclaimer" ]; then
-    cat <<EOF >&2
-    [!] Hint: To avoid answering, you can pass the
-              --accept-disclaimer option when launching the script.
+install_dependencies() {
+  info "Checking and installing dependencies..."
+  PACKAGES_TO_INSTALL=""
+  for pkg in apache2-dev cmake git; do
+    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+      PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
+    fi
+  done
 
-EOF
-    while [ "$ACCEPT_DISCLAIMER" != "yes" ]; do
-      prompt "Are you okay with that? [yes/no]: " ACCEPT_DISCLAIMER
-
-      case $ACCEPT_DISCLAIMER in
-      "yes") success "Very good!" ;;
-      "no")
-        error "Bye."
-        exit 1
-        ;;
-      *)
-        warn "You have to answer yes or no."
-        ACCEPT_DISCLAIMER=""
-        ;;
-      esac
-    done
+  if [ -n "$PACKAGES_TO_INSTALL" ]; then
+    (
+      set -f
+      if ! apt-get install -y $PACKAGES_TO_INSTALL; then
+        warn "Installation failed. Updating package lists and retrying..."
+        apt-get update
+        if ! apt-get install -y $PACKAGES_TO_INSTALL; then
+          crit "Failed to install dependencies."
+          exit 1
+        fi
+      fi
+      apt-mark auto $PACKAGES_TO_INSTALL
+    )
   else
-    ACCEPT_DISCLAIMER="yes"
-    info "Thanks for having accepted the disclaimer."
+    info "All required packages are already installed."
   fi
 }
 
-check_dependencies() {
-  APACHE_EXISTS=$(command -v apache2 || command -v httpd)
-  if [ -z "${APACHE_EXISTS}" ]; then
-    crit "Apache must be installed for this script to work."
-    exit 1
-  fi
-
-  WGET_EXISTS=$(command -v wget)
-  if [ -z "${WGET_EXISTS}" ]; then
-    crit "The wget utility must be installed for this script to work."
-    exit 1
+clone_repository() {
+  info "Cloning mod_antiloris repository..."
+  TEMP_DIR="$(mktemp -d)"
+  if [ -n "$DESIRED_VERSION" ]; then
+    git clone --depth 1 --branch "$DESIRED_VERSION" "$REPO_URL" "$TEMP_DIR" || exit 1
+  else
+    git clone --depth 1 "$REPO_URL" "$TEMP_DIR" || exit 1
   fi
 }
 
-download_module() {
-  if [ -z "$DESIRED_VERSION" ]; then
-    info "Getting the latest version of the antiloris module . . ."
-    DESIRED_VERSION="$(get_latest_version)"
-    info "Latest version determined: ${DESIRED_VERSION}"
-  fi
-
-  if [ -z "$RELEASE_URL" ]; then
-    RELEASE_URL="$(echo "${RELEASE_URL_TEMPLATE}" | sed "s/{VERSION}/${DESIRED_VERSION}/g")"
-  fi
-
-  TMP=$(mktemp -qu)
-  info "Downloading the antiloris module . . ."
-  if ! wget -q "${RELEASE_URL}" -O "${TMP}" || [ ! -f "${TMP}" ]; then
-    crit "Failed to download the antiloris module."
-    exit 1
-  fi
+build_module() {
+  info "Building mod_antiloris..."
+  cd "$TEMP_DIR"
+  cmake . || {
+  	warn "Failed to run CMake. Trying to force compatibility with CMake 3.9..."
+  	git -C "$(git rev-parse --show-toplevel)/lib/check" checkout 0.13.0 &&
+  	cmake .
+  }
+  make
 }
 
 install_module() {
-  if [ -f "${PATH_OF_MODULE}" ]; then
-    warn "Overwriting another version of the antiloris module . . ."
-    rm -f "${PATH_OF_MODULE}"
-  fi
-
-  info "Installing the antiloris module . . ."
-  mv "${TMP}" "${PATH_OF_MODULE}"
-  echo "LoadModule antiloris_module ${PATH_OF_MODULE}" >"${PATH_OF_LOADFILE}"
+  info "Installing mod_antiloris..."
+  apxs -i -a -n antiloris mod_antiloris.so
 }
 
 create_config() {
-  cat <<EOF >"${PATH_OF_CONFFILE}"
+  info "Creating configuration file..."
+  if [ ! -f "$PATH_OF_CONFFILE" ] || [ ! -s "$PATH_OF_CONFFILE" ]; then
+    cat <<EOF > "$PATH_OF_CONFFILE"
 <IfModule antiloris_module>
     # Maximum simultaneous connections in any state per IP address.
     # If set to 0, this limit does not apply.
@@ -377,32 +304,60 @@ create_config() {
     # which should not be subjected to any limits by this module.
     # ExemptIPs    127.0.0.1 ::1
 </IfModule>
-
-# vim: syntax=apache ts=4 sw=4 sts=4 sr noet
 EOF
-}
-
-enable_module() {
-  info "Enabling the antiloris module . . ."
-  ln -sf "${PATH_OF_LOADFILE}" "${PATH_OF_LOADLINK}"
-  ln -sf "${PATH_OF_CONFFILE}" "${PATH_OF_CONFLINK}"
-}
-
-check_config() {
-  if ! apache2ctl configtest 2>/dev/null; then
-    crit "Detected configuration file(s) with invalid syntax."
-    error "Check your Apache configuration, then relaunch this script."
-    exit 1
+  else
+    info "Configuration file already exists. Skipping creation."
   fi
 }
 
+enable_module() {
+  info "Enabling mod_antiloris..."
+  a2enmod antiloris
+}
+
+check_config() {
+  info "Checking Apache configuration..."
+  apache2ctl configtest
+}
+
 restart_apache() {
-  info "Restarting Apache . . ."
-  if systemctl restart apache2 2>/dev/null; then
-    info "Apache restarted successfully."
-  else
-    crit "Failed to restart Apache."
-    exit 1
+  info "Restarting Apache..."
+  systemctl restart apache2
+}
+
+cleanup() {
+  info "Cleaning up..."
+  [ -n "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
+}
+
+uninstall() {
+  info "Uninstalling mod_antiloris..."
+  a2dismod antiloris || warn "Failed to disable mod_antiloris"
+  rm -f "$(get_module_path)/mod_antiloris.so" "$PATH_OF_LOADFILE" "$PATH_OF_CONFFILE" ||
+	warn "Failed to remove some mod_antiloris files"
+  systemctl restart apache2 || warn "Failed to restart Apache"
+  success "mod_antiloris uninstalled successfully."
+  exit 0
+}
+
+check_disclaimer() {
+  if [ "$ACCEPT_DISCLAIMER" != "--accept-disclaimer" ]; then
+    cat <<EOF >&2
+
+[!] DISCLAIMER
+
+    This script will install mod_antiloris from source.
+    It will make changes to your Apache configuration.
+    Please ensure you have a backup before proceeding.
+
+    To bypass this prompt, use the --accept-disclaimer option.
+
+EOF
+    prompt "Do you want to continue? [yes/no]: " ACCEPT_DISCLAIMER
+    case $ACCEPT_DISCLAIMER in
+      yes|YES|Yes) ;;
+      *) exit 1 ;;
+    esac
   fi
 }
 
@@ -411,35 +366,23 @@ main() {
   ensure_root "$@"
   detect_os
 
+  trap cleanup EXIT
+
   if [ "$UNINSTALL" = "yes" ]; then
     uninstall
   fi
 
-  info "mod_antiloris installation script"
-  cat <<EOF >&2
-
-[!] DISCLAIMER
-
-    This script does not perform any backups, and the
-    default actions for all files are to overwrite.
-
-    Running this script does not guarantee the successful
-    installation of the module, and its author is not
-    responsible for any damages that may occur as a
-    result of using this script.
-
-EOF
-
   check_disclaimer
-  check_dependencies
-  download_module
+  install_dependencies
+  clone_repository
+  build_module
   install_module
   create_config
   enable_module
   check_config
   restart_apache
 
-  success "Antiloris module installation completed."
+  success "mod_antiloris installation completed successfully."
 }
 
 main "$@"

@@ -55,7 +55,7 @@ There is a shell script that automates the installation of mod_antiloris, courte
 wget -q https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-antiloris.sh && chmod +x install-antiloris.sh && ./install-antiloris.sh
 ```
 
-This script simplifies the installation process by downloading the latest pre-built version from this repository and configuring the necessary files for seamless integration with the Apache HTTP Server.
+This script simplifies the installation process by cloning this repository, compiling the module, and configuring the necessary files for seamless integration with the Apache HTTP Server.
 
 #### Non-Interactive Install
 
@@ -76,6 +76,7 @@ wget -qO- https://raw.githubusercontent.com/Deltik/mod_antiloris/main/install-an
 #### Tested Platforms
 
 The script has been tested on the following platforms:
+- Ubuntu 18.04
 - Ubuntu 24.04
 - Debian 12
 
