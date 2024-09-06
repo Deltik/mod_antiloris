@@ -79,6 +79,8 @@ The script has been tested on the following platforms:
 - Ubuntu 18.04
 - Ubuntu 24.04
 - Debian 12
+- AlmaLinux 8
+- AlmaLinux 9
 
 ### Pre-Built Module
 

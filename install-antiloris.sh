@@ -23,6 +23,7 @@ set -e
 
 REPO_URL="https://github.com/Deltik/mod_antiloris.git"
 TEMP_DIR=""
+INSTALLED_PACKAGES=""
 
 usage() {
   cat <<EOF
@@ -200,53 +201,136 @@ ensure_root() {
   fi
 }
 
+get_os_family() {
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    case $ID in
+      debian|ubuntu)
+        echo "debian"
+        ;;
+      rhel|centos|almalinux|rocky|fedora)
+        echo "rhel"
+        ;;
+      *)
+        echo "unknown"
+        ;;
+    esac
+  else
+    echo "unknown"
+  fi
+}
+
+get_package_manager() {
+  case $(get_os_family) in
+    debian)
+      echo "apt-get"
+      ;;
+    rhel)
+      if command -v dnf >/dev/null 2>&1; then
+        echo "dnf"
+      else
+        echo "yum"
+      fi
+      ;;
+    *)
+      echo "unknown"
+      ;;
+  esac
+}
+
+get_cmake_command() {
+  if [ "$(get_os_family)" = "rhel" ] && command -v cmake3 >/dev/null 2>&1; then
+    echo "cmake3"
+  else
+    echo "cmake"
+  fi
+}
+
 detect_os() {
-  OS=$(. /etc/os-release && echo "$ID")
-  case $OS in
-  debian | ubuntu)
-    PATH_OF_MODAVAIL_DIR='/etc/apache2/mods-available'
-    PATH_OF_MODENABL_DIR='/etc/apache2/mods-enabled'
-    PATH_OF_LOADFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.load"
-    PATH_OF_CONFFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.conf"
-    PATH_OF_LOADLINK="${PATH_OF_MODENABL_DIR}/antiloris.load"
-    PATH_OF_CONFLINK="${PATH_OF_MODENABL_DIR}/antiloris.conf"
-    ;;
-  *)
-    crit "This script does not support the ${OS} operating system."
-    exit 1
-    ;;
+  OS_FAMILY="$(get_os_family)"
+  PACKAGE_MANAGER="$(get_package_manager)"
+
+  case $OS_FAMILY in
+    debian)
+      APACHE_PACKAGE="apache2"
+      APACHE_DEV_PACKAGE="apache2-dev"
+      APACHE_SERVICE="apache2"
+      PATH_OF_MODAVAIL_DIR='/etc/apache2/mods-available'
+      PATH_OF_MODENABL_DIR='/etc/apache2/mods-enabled'
+      PATH_OF_LOADFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.load"
+      PATH_OF_CONFFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.conf"
+      PATH_OF_LOADLINK="${PATH_OF_MODENABL_DIR}/antiloris.load"
+      PATH_OF_CONFLINK="${PATH_OF_MODENABL_DIR}/antiloris.conf"
+      ;;
+    rhel)
+      APACHE_PACKAGE="httpd"
+      APACHE_DEV_PACKAGE="httpd-devel"
+      APACHE_SERVICE="httpd"
+      PATH_OF_MODAVAIL_DIR='/etc/httpd/conf.modules.d'
+      PATH_OF_LOADFILE="${PATH_OF_MODAVAIL_DIR}/10-antiloris.conf"
+      PATH_OF_CONFFILE="/etc/httpd/conf.d/antiloris.conf"
+      ;;
+    *)
+      crit "This script does not support your operating system."
+      exit 1
+      ;;
   esac
 }
 
 get_module_path() {
-  if command -v a2query >/dev/null 2>&1; then
-    a2query -d
-  else
-    echo "/usr/lib/apache2/modules"
-  fi
+  case $(get_os_family) in
+    debian)
+      if command -v a2query >/dev/null 2>&1; then
+        a2query -d
+      else
+        echo "/usr/lib/apache2/modules"
+      fi
+      ;;
+    rhel)
+      echo "/usr/lib64/httpd/modules"
+      ;;
+  esac
 }
 
 install_dependencies() {
   info "Checking and installing dependencies..."
   PACKAGES_TO_INSTALL=""
-  for pkg in apache2-dev cmake git; do
-    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
-      PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
-    fi
-  done
+  case $PACKAGE_MANAGER in
+    apt-get)
+      for pkg in $APACHE_DEV_PACKAGE cmake git; do
+        if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
+        fi
+      done
+      ;;
+    dnf|yum)
+      for pkg in $APACHE_DEV_PACKAGE cmake git gcc make; do
+        if ! rpm -q "$pkg" >/dev/null 2>&1; then
+          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
+        fi
+      done
+      ;;
+  esac
 
   if [ -n "$PACKAGES_TO_INSTALL" ]; then
     (
       set -f
-      if ! apt-get install -y $PACKAGES_TO_INSTALL; then
+      if ! $PACKAGE_MANAGER install -y $PACKAGES_TO_INSTALL; then
         warn "Installation failed. Updating package lists and retrying..."
-        apt-get update
-        if ! apt-get install -y $PACKAGES_TO_INSTALL; then
+        $PACKAGE_MANAGER update
+        if ! $PACKAGE_MANAGER install -y $PACKAGES_TO_INSTALL; then
           crit "Failed to install dependencies."
           exit 1
         fi
       fi
-      apt-mark auto $PACKAGES_TO_INSTALL
+      case $PACKAGE_MANAGER in
+        apt-get)
+          apt-mark auto $PACKAGES_TO_INSTALL
+          ;;
+        dnf|yum)
+          INSTALLED_PACKAGES="$INSTALLED_PACKAGES $PACKAGES_TO_INSTALL"
+          ;;
+      esac
     )
   else
     info "All required packages are already installed."
@@ -266,17 +350,27 @@ clone_repository() {
 build_module() {
   info "Building mod_antiloris..."
   cd "$TEMP_DIR"
-  cmake . || {
-  	warn "Failed to run CMake. Trying to force compatibility with CMake 3.9..."
-  	git -C "$(git rev-parse --show-toplevel)/lib/check" checkout 0.13.0 &&
-  	cmake .
+  CMAKE_COMMAND=$(get_cmake_command)
+
+  $CMAKE_COMMAND . || {
+    warn "Failed to run CMake. Trying to force compatibility with CMake 3.9..."
+    git -C "$(git rev-parse --show-toplevel)/lib/check" checkout 0.13.0 &&
+    $CMAKE_COMMAND .
   }
-  make
+  make mod_antiloris
 }
 
 install_module() {
   info "Installing mod_antiloris..."
-  apxs -i -a -n antiloris mod_antiloris.so
+  case $(get_os_family) in
+    debian)
+      apxs -i -a -n antiloris mod_antiloris.so
+      ;;
+    rhel)
+      cp mod_antiloris.so "$(get_module_path)/"
+      echo "LoadModule antiloris_module modules/mod_antiloris.so" > "$PATH_OF_LOADFILE"
+      ;;
+  esac
 }
 
 create_config() {
@@ -312,32 +406,57 @@ EOF
 
 enable_module() {
   info "Enabling mod_antiloris..."
-  a2enmod antiloris
+  case $(get_os_family) in
+    debian)
+      a2enmod antiloris
+      ;;
+    rhel)
+      # Module is enabled by default when LoadModule directive is present
+      ;;
+  esac
 }
 
 check_config() {
   info "Checking Apache configuration..."
-  apache2ctl configtest
+  case $(get_os_family) in
+    debian)
+      apache2ctl configtest
+      ;;
+    rhel)
+      apachectl configtest
+      ;;
+  esac
 }
 
 restart_apache() {
   info "Restarting Apache..."
-  systemctl restart apache2
+  systemctl restart $APACHE_SERVICE
+}
+
+uninstall() {
+  info "Uninstalling mod_antiloris..."
+  case $(get_os_family) in
+    debian)
+      a2dismod antiloris || warn "Failed to disable mod_antiloris"
+      ;;
+    rhel)
+      # No specific disable command for RHEL, just remove files
+      ;;
+  esac
+  rm -f "$(get_module_path)/mod_antiloris.so" "$PATH_OF_LOADFILE" "$PATH_OF_CONFFILE" ||
+    warn "Failed to remove some mod_antiloris files"
+  systemctl restart $APACHE_SERVICE || warn "Failed to restart Apache"
+  success "mod_antiloris uninstalled successfully."
+  exit 0
 }
 
 cleanup() {
   info "Cleaning up..."
   [ -n "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
-}
-
-uninstall() {
-  info "Uninstalling mod_antiloris..."
-  a2dismod antiloris || warn "Failed to disable mod_antiloris"
-  rm -f "$(get_module_path)/mod_antiloris.so" "$PATH_OF_LOADFILE" "$PATH_OF_CONFFILE" ||
-	warn "Failed to remove some mod_antiloris files"
-  systemctl restart apache2 || warn "Failed to restart Apache"
-  success "mod_antiloris uninstalled successfully."
-  exit 0
+  if [ -n "$INSTALLED_PACKAGES" ] && [ "$PACKAGE_MANAGER" = "dnf" -o "$PACKAGE_MANAGER" = "yum" ]; then
+    info "Removing automatically installed packages..."
+    $PACKAGE_MANAGER remove -y $INSTALLED_PACKAGES
+  fi
 }
 
 check_disclaimer() {
