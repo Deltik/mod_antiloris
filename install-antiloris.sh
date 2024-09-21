@@ -22,8 +22,17 @@
 set -e
 
 REPO_URL="https://github.com/Deltik/mod_antiloris.git"
+TAG_SOURCE_URL="https://api.github.com/repos/Deltik/mod_antiloris/tags"
+RELEASE_URL_TEMPLATE="https://github.com/Deltik/mod_antiloris/releases/download/{VERSION}/mod_antiloris-{ARCH}.so"
+
 TEMP_DIR=""
 INSTALLED_PACKAGES=""
+ARCH=""
+APACHE_SERVICE=""
+PACKAGE_MANAGER=""
+OS_FAMILY=""
+APACHE_DEV_PACKAGE=""
+APACHE_PACKAGE=""
 
 usage() {
   cat <<EOF
@@ -33,7 +42,8 @@ Installs mod_antiloris on an existing Apache HTTP Server
 
 options:
   -h, --help                show this help message and exit
-  --version VERSION         install the named version (e.g. "v0.7.0") rather than the latest version
+  --version VERSION         install the version from a tag (e.g. "v0.8.1"), branch (e.g. "main"),
+                            or revision (e.g. "042be13") rather than the latest release
   -y, --accept-disclaimer   bypass the disclaimer prompt
   --uninstall               uninstall mod_antiloris and remove its configuration
   --color                   show pretty colors in the output (default if run in a terminal)
@@ -206,49 +216,79 @@ get_os_family() {
     . /etc/os-release
     case $ID in
       debian|ubuntu)
-        echo "debian"
+        OS_FAMILY="debian"
         ;;
       rhel|centos|almalinux|rocky|fedora)
-        echo "rhel"
+        OS_FAMILY="rhel"
         ;;
       *)
-        echo "unknown"
+        OS_FAMILY="unknown"
         ;;
     esac
   else
-    echo "unknown"
+    OS_FAMILY="unknown"
   fi
 }
 
 get_package_manager() {
-  case $(get_os_family) in
+  case $OS_FAMILY in
     debian)
-      echo "apt-get"
+      PACKAGE_MANAGER="apt-get"
       ;;
     rhel)
       if command -v dnf >/dev/null 2>&1; then
-        echo "dnf"
+        PACKAGE_MANAGER="dnf"
       else
-        echo "yum"
+        PACKAGE_MANAGER="yum"
       fi
       ;;
     *)
-      echo "unknown"
+      PACKAGE_MANAGER="unknown"
       ;;
   esac
 }
 
 get_cmake_command() {
-  if [ "$(get_os_family)" = "rhel" ] && command -v cmake3 >/dev/null 2>&1; then
-    echo "cmake3"
+  if [ "$OS_FAMILY" = "rhel" ] && command -v cmake3 >/dev/null 2>&1; then
+    CMAKE_COMMAND="cmake3"
   else
-    echo "cmake"
+    CMAKE_COMMAND="cmake"
   fi
 }
 
+get_architecture() {
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64)
+      ARCH="x86_64"
+      ;;
+    i386|i686)
+      ARCH="i386"
+      ;;
+    armv7*|armv6*)
+      ARCH="arm"
+      ;;
+    aarch64)
+      ARCH="aarch64"
+      ;;
+    ppc64le)
+      ARCH="ppc64le"
+      ;;
+    s390x)
+      ARCH="s390x"
+      ;;
+    *)
+      warn "Unknown system architecture: $ARCH"
+      ARCH=""
+      ;;
+  esac
+}
+
 detect_os() {
-  OS_FAMILY="$(get_os_family)"
-  PACKAGE_MANAGER="$(get_package_manager)"
+  get_os_family
+  get_package_manager
+  get_cmake_command
+  get_architecture
 
   case $OS_FAMILY in
     debian)
@@ -278,80 +318,243 @@ detect_os() {
 }
 
 get_module_path() {
-  case $(get_os_family) in
+  case $OS_FAMILY in
     debian)
       if command -v a2query >/dev/null 2>&1; then
-        a2query -d
+        MODULE_PATH="$(a2query -d)"
       else
-        echo "/usr/lib/apache2/modules"
+        MODULE_PATH="/usr/lib/apache2/modules/"
       fi
       ;;
     rhel)
-      echo "/usr/lib64/httpd/modules"
+      MODULE_PATH="/usr/lib64/httpd/modules"
       ;;
   esac
 }
 
-install_dependencies() {
-  info "Checking and installing dependencies..."
-  PACKAGES_TO_INSTALL=""
-  case $PACKAGE_MANAGER in
-    apt-get)
-      for pkg in $APACHE_DEV_PACKAGE cmake git; do
+install_packages() {
+  # Usage: install_packages pkg1 pkg2 pkg3
+  # Installs the given packages if they are not already installed.
+  # Adds installed packages to INSTALLED_PACKAGES
+  packages_to_install=""
+  for pkg in "$@"; do
+    case $PACKAGE_MANAGER in
+      apt-get)
         if ! dpkg -s "$pkg" >/dev/null 2>&1; then
-          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
+          packages_to_install="$packages_to_install $pkg"
         fi
-      done
-      ;;
-    dnf|yum)
-      for pkg in $APACHE_DEV_PACKAGE cmake git gcc make; do
+        ;;
+      dnf|yum)
         if ! rpm -q "$pkg" >/dev/null 2>&1; then
-          PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $pkg"
+          packages_to_install="$packages_to_install $pkg"
         fi
-      done
-      ;;
-  esac
+        ;;
+    esac
+  done
 
-  if [ -n "$PACKAGES_TO_INSTALL" ]; then
-    (
-      set -f
-      if ! $PACKAGE_MANAGER install -y $PACKAGES_TO_INSTALL; then
-        warn "Installation failed. Updating package lists and retrying..."
-        $PACKAGE_MANAGER update
-        if ! $PACKAGE_MANAGER install -y $PACKAGES_TO_INSTALL; then
-          crit "Failed to install dependencies."
-          exit 1
-        fi
+  if [ -n "$packages_to_install" ]; then
+    info "Installing packages:$packages_to_install"
+    set -- $packages_to_install
+    if ! $PACKAGE_MANAGER install -y "$@"; then
+      warn "Installation failed. Updating package lists and retrying..."
+      $PACKAGE_MANAGER update
+      if ! $PACKAGE_MANAGER install -y "$@"; then
+        crit "Failed to install dependencies."
+        exit 1
       fi
-      case $PACKAGE_MANAGER in
-        apt-get)
-          apt-mark auto $PACKAGES_TO_INSTALL
-          ;;
-        dnf|yum)
-          INSTALLED_PACKAGES="$INSTALLED_PACKAGES $PACKAGES_TO_INSTALL"
-          ;;
-      esac
-    )
+    fi
+    case $PACKAGE_MANAGER in
+      apt-get)
+        apt-mark auto "$@"
+        ;;
+      dnf|yum)
+        INSTALLED_PACKAGES="$INSTALLED_PACKAGES $packages_to_install"
+        ;;
+    esac
   else
     info "All required packages are already installed."
   fi
 }
 
+install_minimal_dependencies() {
+  info "Checking and installing minimal dependencies..."
+  install_packages wget file
+}
+
+install_build_dependencies() {
+  info "Checking and installing build dependencies..."
+  install_packages $APACHE_DEV_PACKAGE cmake git gcc make
+}
+
+get_all_tags() {
+  debug "Retrieving tags from ${TAG_SOURCE_URL} . . ."
+  tags=$(wget -qO- "${TAG_SOURCE_URL}")
+  echo "${tags}" | tr '},' '\n' | grep '"name":' | awk -F'"' '{ print $4 }' | sort -Vr
+}
+
+get_latest_version() {
+  all_tags="$(get_all_tags)"
+  debug "All tags: $(echo "${all_tags}" | tr '\n' ' ')"
+
+  for tag in ${all_tags}; do
+    debug "Checking tag ${tag} for architecture-specific binary (${ARCH}) . . ."
+    release_url=$(echo "${RELEASE_URL_TEMPLATE}" | sed "s/{VERSION}/${tag}/g" | sed "s/{ARCH}/${ARCH}/g")
+    http_code=$(wget --spider --server-response "${release_url}" 2>&1 | awk '/^  HTTP/{print $2}' | tail -n 1)
+
+    if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+      info "Found architecture-specific binary for tag ${tag} (${ARCH})"
+      echo "${tag}"
+      return
+    else
+      debug "No architecture-specific binary found for tag ${tag}"
+    fi
+
+    debug "Checking tag ${tag} for generic binary . . ."
+    generic_release_url=$(echo "${RELEASE_URL_TEMPLATE}" | sed "s/{VERSION}/${tag}/g" | sed "s/-{ARCH}//g")
+    http_code=$(wget --spider --server-response "${generic_release_url}" 2>&1 | awk '/^  HTTP/{print $2}' | tail -n 1)
+
+    if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+      info "Found generic binary for tag ${tag}"
+      echo "${tag}"
+      return
+    else
+      debug "No generic binary found for tag ${tag}"
+    fi
+  done
+
+  crit "No suitable binary found for any tags."
+  return 1
+}
+
+
+check_binary_architecture() {
+  binary="$1"
+  if ! command -v file >/dev/null 2>&1; then
+    warn "Cannot check binary architecture because 'file' command is not available."
+    return 1
+  fi
+
+  binary_arch=$(file -b "$binary" | grep -oE 'x86[-_ ]64|i[3-6]86|arm|aarch64|ppc64le|s390x')
+  debug "Binary architecture: $binary_arch"
+  debug "Expected architecture: $ARCH"
+
+  case "$ARCH" in
+    x86_64)
+      ARCH="x86-64"
+      ;;
+    i386|i686)
+      ARCH="i386"
+      ;;
+    armv7*|armv6*)
+      ARCH="arm"
+      ;;
+    aarch64)
+      ARCH="aarch64"
+      ;;
+    ppc64le)
+      ARCH="ppc64le"
+      ;;
+    s390x)
+      ARCH="s390x"
+      ;;
+    *)
+      warn "Unknown system architecture: $ARCH"
+      return 1
+      ;;
+  esac
+
+  if echo "$binary_arch" | grep -qi "$ARCH"; then
+    return 0
+  else
+    warn "Binary architecture ($binary_arch) does not match expected architecture ($ARCH)."
+    return 1
+  fi
+}
+
+install_binary_module() {
+  binary="$1"
+  get_module_path
+  module_path="${MODULE_PATH%/}/mod_antiloris.so"
+
+  if [ -f "$module_path" ]; then
+    warn "Overwriting existing module at $module_path"
+  fi
+
+  info "Copying module to $module_path"
+  cp "$binary" "$module_path"
+
+  # Create LoadModule directive if necessary
+  case $OS_FAMILY in
+    debian)
+      echo "LoadModule antiloris_module $module_path" > "$PATH_OF_LOADFILE"
+      ;;
+    rhel)
+      echo "LoadModule antiloris_module modules/mod_antiloris.so" > "$PATH_OF_LOADFILE"
+      ;;
+  esac
+}
+
+download_module() {
+  if [ -z "$DESIRED_VERSION" ]; then
+    info "Getting the latest version of the antiloris module . . ."
+    DESIRED_VERSION="$(get_latest_version)"
+    info "Latest version determined: ${DESIRED_VERSION}"
+  fi
+
+  # Try downloading architecture-specific binary
+  RELEASE_URL="$(echo "${RELEASE_URL_TEMPLATE}" | sed "s/{VERSION}/${DESIRED_VERSION}/g" | sed "s/{ARCH}/${ARCH}/g")"
+
+  TMP="$(mktemp)"
+  info "Downloading the antiloris module for architecture ${ARCH} . . ."
+  if ! wget -q "${RELEASE_URL}" -O "${TMP}" || [ ! -f "${TMP}" ]; then
+    warn "Failed to download the antiloris module for architecture ${ARCH}."
+
+    # Fallback to generic binary
+    RELEASE_URL="$(echo "${RELEASE_URL_TEMPLATE}" | sed "s/{VERSION}/${DESIRED_VERSION}/g" | sed "s/-{ARCH}//g")"
+    info "Attempting to download generic antiloris module . . ."
+    if ! wget -q "${RELEASE_URL}" -O "${TMP}" || [ ! -f "${TMP}" ]; then
+      warn "Failed to download the generic antiloris module."
+      return 1
+    fi
+  fi
+
+  if ! check_binary_architecture "${TMP}"; then
+    warn "Downloaded binary is not compatible with your system."
+    return 1
+  fi
+
+  info "Installing the antiloris module . . ."
+  install_binary_module "${TMP}"
+  return 0
+}
+
 clone_repository() {
   info "Cloning mod_antiloris repository..."
   TEMP_DIR="$(mktemp -d)"
-  if [ -n "$DESIRED_VERSION" ]; then
-    git clone --depth 1 --branch "$DESIRED_VERSION" "$REPO_URL" "$TEMP_DIR" || exit 1
-  else
-    git clone --depth 1 "$REPO_URL" "$TEMP_DIR" || exit 1
-  fi
+
+  (
+    set -e
+
+    if [ -n "$DESIRED_VERSION" ]; then
+      if git ls-remote --refs --heads --tags "$REPO_URL" "$DESIRED_VERSION" | grep -q "$DESIRED_VERSION"; then
+        git clone --depth 1 --branch "$DESIRED_VERSION" "$REPO_URL" "$TEMP_DIR"
+      else
+        git clone --no-checkout --depth 1 "$REPO_URL" "$TEMP_DIR"
+		git -C "$TEMP_DIR" fetch --depth 1 origin "$DESIRED_VERSION"
+		git -C "$TEMP_DIR" checkout "$DESIRED_VERSION"
+      fi
+    else
+      git clone --depth 1 "$REPO_URL" "$TEMP_DIR"
+    fi
+  ) || {
+	crit "Error cloning the mod_antiloris repository."
+	exit 1
+  }
 }
 
 build_module() {
   info "Building mod_antiloris..."
   cd "$TEMP_DIR"
-  CMAKE_COMMAND=$(get_cmake_command)
-
   $CMAKE_COMMAND . || {
     warn "Failed to run CMake. Trying to force compatibility with CMake 3.9..."
     git -C "$(git rev-parse --show-toplevel)/lib/check" checkout 0.13.0 &&
@@ -360,14 +563,15 @@ build_module() {
   make mod_antiloris
 }
 
-install_module() {
-  info "Installing mod_antiloris..."
-  case $(get_os_family) in
+install_compiled_module() {
+  info "Installing compiled mod_antiloris..."
+  get_module_path
+  case $OS_FAMILY in
     debian)
       apxs -i -a -n antiloris mod_antiloris.so
       ;;
     rhel)
-      cp mod_antiloris.so "$(get_module_path)/"
+      cp mod_antiloris.so "${MODULE_PATH%/}/mod_antiloris.so"
       echo "LoadModule antiloris_module modules/mod_antiloris.so" > "$PATH_OF_LOADFILE"
       ;;
   esac
@@ -406,7 +610,7 @@ EOF
 
 enable_module() {
   info "Enabling mod_antiloris..."
-  case $(get_os_family) in
+  case $OS_FAMILY in
     debian)
       a2enmod antiloris
       ;;
@@ -418,7 +622,7 @@ enable_module() {
 
 check_config() {
   info "Checking Apache configuration..."
-  case $(get_os_family) in
+  case $OS_FAMILY in
     debian)
       apache2ctl configtest
       ;;
@@ -435,7 +639,8 @@ restart_apache() {
 
 uninstall() {
   info "Uninstalling mod_antiloris..."
-  case $(get_os_family) in
+  get_module_path
+  case $OS_FAMILY in
     debian)
       a2dismod antiloris || warn "Failed to disable mod_antiloris"
       ;;
@@ -443,7 +648,7 @@ uninstall() {
       # No specific disable command for RHEL, just remove files
       ;;
   esac
-  rm -f "$(get_module_path)/mod_antiloris.so" "$PATH_OF_LOADFILE" "$PATH_OF_CONFFILE" ||
+  rm -f "${MODULE_PATH%/}/mod_antiloris.so" "$PATH_OF_LOADFILE" "$PATH_OF_CONFFILE" ||
     warn "Failed to remove some mod_antiloris files"
   systemctl restart $APACHE_SERVICE || warn "Failed to restart Apache"
   success "mod_antiloris uninstalled successfully."
@@ -453,9 +658,10 @@ uninstall() {
 cleanup() {
   info "Cleaning up..."
   [ -n "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
-  if [ -n "$INSTALLED_PACKAGES" ] && [ "$PACKAGE_MANAGER" = "dnf" -o "$PACKAGE_MANAGER" = "yum" ]; then
+  if [ -n "$INSTALLED_PACKAGES" ] && { [ "$PACKAGE_MANAGER" = "dnf" ] || [ "$PACKAGE_MANAGER" = "yum" ]; }; then
     info "Removing automatically installed packages..."
-    $PACKAGE_MANAGER remove -y $INSTALLED_PACKAGES
+    set -- $INSTALLED_PACKAGES
+    $PACKAGE_MANAGER remove -y "$@"
   fi
 }
 
@@ -465,7 +671,7 @@ check_disclaimer() {
 
 [!] DISCLAIMER
 
-    This script will install mod_antiloris from source.
+    This script will install mod_antiloris from a pre-built binary (if available) or compile it from source.
     It will make changes to your Apache configuration.
     Please ensure you have a backup before proceeding.
 
@@ -492,10 +698,16 @@ main() {
   fi
 
   check_disclaimer
-  install_dependencies
-  clone_repository
-  build_module
-  install_module
+  install_minimal_dependencies
+
+  if ! download_module; then
+    warn "Proceeding to compile from source as fallback."
+    install_build_dependencies
+    clone_repository
+    build_module
+    install_compiled_module
+  fi
+
   create_config
   enable_module
   check_config
