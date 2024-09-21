@@ -1,0 +1,66 @@
+name: Build and Release mod_antiloris
+
+on:
+  push:
+    branches:
+      - '*'
+    tags:
+      - '*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            platform: linux/amd64
+            arch_label: x86_64
+          - arch: aarch64
+            platform: linux/arm64
+            arch_label: aarch64
+          - arch: ppc64le
+            platform: linux/ppc64le
+            arch_label: ppc64le
+          - arch: s390x
+            platform: linux/s390x
+            arch_label: s390x
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Get operating system name and version
+        run: |
+          source /etc/os-release
+          echo "OS_ID=$ID" >> $GITHUB_ENV
+          echo "OS_VERSION_ID=$VERSION_ID" >> $GITHUB_ENV
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build for ${{ matrix.arch }}
+        run: |
+          docker run --rm --privileged --platform ${{ matrix.platform }} \
+            -v ${{ github.workspace }}:/src -w /src ${{ env.OS_ID }}:${{ env.OS_VERSION_ID }} bash -c "
+            apt-get update && \
+            apt-get install -y apache2-dev cmake git && \
+            git config --global --add safe.directory /src && \
+            mkdir -p build && cd build && \
+            cmake .. && make mod_antiloris && \
+            cp mod_antiloris.so /src/mod_antiloris-${{ matrix.arch_label }}.so
+          "
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mod_antiloris-${{ matrix.arch_label }}
+          path: mod_antiloris-${{ matrix.arch_label }}.so
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mod_antiloris-${{ matrix.arch_label }}.so
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
