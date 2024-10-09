@@ -217,16 +217,14 @@ static command_rec antiloris_cmds[] = {
         AP_INIT_TAKE1("IPOtherLimit", ip_other_limit_config_cmd, NULL, RSRC_CONF,
                       "the maximum number of simultaneous idle connections per IP address"),
         AP_INIT_ITERATE("LocalIPs", exempt_ips_config_cmd, NULL, RSRC_CONF,
-                        "a list of IPs (separated by spaces) whose connection are always allowed. "
-                        "The ExemptIPs directive overrides this one."),
+                        "a space-delimited list of IPv4 and IPv6 addresses, ranges, or CIDRs "
+                        "which should not be subjected to any limits by " MODULE_NAME "."),
         AP_INIT_ITERATE("WhitelistIPs", exempt_ips_config_cmd, NULL, RSRC_CONF,
-                        "a list of IPs (separated by spaces) whose connection are always allowed. "
-                        "This directive overrides the LocalIPs directive. "
-                        "The ExemptIPs directive overrides this one."),
+                        "a space-delimited list of IPv4 and IPv6 addresses, ranges, or CIDRs "
+                        "which should not be subjected to any limits by " MODULE_NAME "."),
         AP_INIT_ITERATE("ExemptIPs", exempt_ips_config_cmd, NULL, RSRC_CONF,
                         "a space-delimited list of IPv4 and IPv6 addresses, ranges, or CIDRs "
-                        "which should not be subjected to any limits by mod_antiloris. "
-                        "This directive overrides the LocalIPs and WhitelistIPs directives."),
+                        "which should not be subjected to any limits by " MODULE_NAME "."),
         {NULL}
 };
 

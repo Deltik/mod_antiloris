@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `ExemptIPs` allowlist insertion bug that erroneously lost track of some IP range branches when splitting a node during insertion (#4)
+- Inaccurate descriptions of the `ExemptIPs`, `WhitelistIPs`, and `LocalIPs` directives in the module built-in documentation
 
 ### Changed
 
