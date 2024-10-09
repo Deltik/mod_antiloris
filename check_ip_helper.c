@@ -22,6 +22,34 @@
 #include <netinet/in.h>
 #include "ip_helper.h"
 
+// Function to print the tree starting from a given node
+void patricia_print_tree(patricia_node *node, int level) {
+    if (node == NULL)
+        return;
+
+    // Indentation for the current level
+    for (int i = 0; i < level; i++) {
+        printf("  ");
+    }
+
+    // Convert the IP address to a string
+    char ip_str[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &node->ip, ip_str, sizeof(ip_str));
+
+    // Print the node's IP and prefix length
+    printf("%s/%d\n", ip_str, node->prefix_len);
+
+    // Recursively print the left and right subtrees
+    patricia_print_tree(node->left, level + 1);
+    patricia_print_tree(node->right, level + 1);
+}
+
+// Wrapper function to print the entire trie
+void patricia_print(patricia_trie *trie) {
+    printf("Patricia Trie:\n");
+    patricia_print_tree(trie->root, 0);
+}
+
 START_TEST(test_single_ip_allowlist) {
     patricia_trie *allowlist = patricia_create();
     char input[] = "192.168.168.192";
@@ -152,6 +180,78 @@ START_TEST(test_for_bugs_in_fill_between_logic) {
 
 END_TEST
 
+// https://github.com/Deltik/mod_antiloris/issues/4
+START_TEST(test_double_split_bug) {
+    patricia_trie *allowlist = patricia_create();
+    ck_assert_int_eq(0, exempt_ip(allowlist, "127.0.0.1"));
+    ck_assert_int_eq(0, exempt_ip(allowlist, "::1"));
+    ck_assert_int_eq(0, exempt_ip(allowlist, "10.64.229.0/24"));
+
+    ck_assert(is_ip_exempted("127.0.0.1", allowlist));
+    ck_assert(is_ip_exempted("::1", allowlist));
+    ck_assert(is_ip_exempted("10.64.229.1", allowlist));
+}
+
+END_TEST
+
+START_TEST(test_insert_more_specific_prefix) {
+    patricia_trie *allowlist = patricia_create();
+    ck_assert_int_eq(0, exempt_ip(allowlist, "127.0.0.0/24"));
+    ck_assert(is_ip_exempted("127.0.0.1", allowlist));
+    ck_assert(!is_ip_exempted("127.0.1.1", allowlist));
+
+    ck_assert_int_eq(0, exempt_ip(allowlist, "127.0.0.0/29"));
+    ck_assert(is_ip_exempted("127.0.0.1", allowlist));
+    ck_assert(is_ip_exempted("127.0.0.255", allowlist));
+    ck_assert(!is_ip_exempted("127.0.1.255", allowlist));
+}
+
+END_TEST
+
+START_TEST(test_insert_less_specific_prefix) {
+    patricia_trie *allowlist = patricia_create();
+    ck_assert_int_eq(0, exempt_ip(allowlist, "127.0.0.0/24"));
+    ck_assert(is_ip_exempted("127.0.0.1", allowlist));
+    ck_assert(is_ip_exempted("127.0.0.255", allowlist));
+    ck_assert(!is_ip_exempted("127.0.1.255", allowlist));
+
+    ck_assert_int_eq(0, exempt_ip(allowlist, "127.0.0.0/16"));
+    ck_assert(is_ip_exempted("127.0.0.1", allowlist));
+    ck_assert(is_ip_exempted("127.0.0.255", allowlist));
+    ck_assert(is_ip_exempted("127.0.1.255", allowlist));
+}
+
+END_TEST
+
+START_TEST(test_same_prefix_different_range) {
+    patricia_trie *allowlist = patricia_create();
+    ck_assert_int_eq(0, exempt_ip(allowlist, "127.0.0.0/16"));
+    ck_assert_int_eq(0, exempt_ip(allowlist, "127.255.0.0/16"));
+
+    ck_assert(is_ip_exempted("127.0.0.1", allowlist));
+    ck_assert(is_ip_exempted("127.0.0.255", allowlist));
+    ck_assert(!is_ip_exempted("127.1.1.1", allowlist));
+    ck_assert(!is_ip_exempted("127.254.255.0", allowlist));
+    ck_assert(is_ip_exempted("127.255.0.128", allowlist));
+}
+
+END_TEST
+
+START_TEST(test_partially_overlapping_range) {
+    patricia_trie *allowlist = patricia_create();
+    ck_assert_int_eq(0, exempt_ip(allowlist, "1.1.1.1-1.1.1.4"));
+    ck_assert_int_eq(0, exempt_ip(allowlist, "1.1.1.3-1.1.1.6"));
+
+    ck_assert(!is_ip_exempted("1.1.1.0", allowlist));
+    ck_assert(is_ip_exempted("1.1.1.1", allowlist));
+    ck_assert(is_ip_exempted("1.1.1.3", allowlist));
+    ck_assert(is_ip_exempted("1.1.1.4", allowlist));
+    ck_assert(is_ip_exempted("1.1.1.6", allowlist));
+    ck_assert(!is_ip_exempted("1.1.1.7", allowlist));
+}
+
+END_TEST
+
 Suite *playground_suite(void) {
     Suite *s;
     TCase *tc_core;
@@ -167,6 +267,11 @@ Suite *playground_suite(void) {
     tcase_add_test(tc_core, test_big_range_allowlist);
     tcase_add_test(tc_core, test_multiple_allowlist);
     tcase_add_test(tc_core, test_for_bugs_in_fill_between_logic);
+    tcase_add_test(tc_core, test_double_split_bug);
+    tcase_add_test(tc_core, test_insert_more_specific_prefix);
+    tcase_add_test(tc_core, test_insert_less_specific_prefix);
+    tcase_add_test(tc_core, test_same_prefix_different_range);
+    tcase_add_test(tc_core, test_partially_overlapping_range);
     suite_add_tcase(s, tc_core);
 
     return s;

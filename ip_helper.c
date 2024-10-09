@@ -63,31 +63,9 @@ int count_common_prefix_bits(const struct in6_addr *ip1, const struct in6_addr *
 void patricia_insert(patricia_trie *trie, struct in6_addr ip, int prefix_len) {
     patricia_node **node = &trie->root;
 
-    if (*node == NULL) {
-        patricia_node *new_node = malloc(sizeof(patricia_node));
-        new_node->ip = ip;  // Copy IP address
-        new_node->prefix_len = prefix_len;
-        new_node->left = new_node->right = NULL;
-        *node = new_node;
-        return;
-    }
-
     while (true) {
-        int common_leading_bits = count_common_prefix_bits(&(*node)->ip, &ip, prefix_len);
-        // Check if same IP range is already inserted
-        if (common_leading_bits == prefix_len) {
-            return;
-        }
-        if ((*node)->prefix_len < common_leading_bits) {
-            // Check if new IP range is fully within an existing IP range
-            if ((*node)->left == NULL && (*node)->right == NULL) {
-                return;
-            }
-            bool next_bit = bit_at(&ip, common_leading_bits + 1);
-            node = next_bit ? &(*node)->right : &(*node)->left;
-            // Descend the tree
-            if (*node != NULL) continue;
-            // Insert the new node
+        if (*node == NULL) {
+            // Node is empty, insert here
             patricia_node *new_node = malloc(sizeof(patricia_node));
             new_node->ip = ip;
             new_node->prefix_len = prefix_len;
@@ -95,39 +73,65 @@ void patricia_insert(patricia_trie *trie, struct in6_addr ip, int prefix_len) {
             *node = new_node;
             return;
         }
-        // Check if new IP range encompasses an existing IP range
-        if (prefix_len < common_leading_bits) {
-            patricia_free_node((*node)->left);
-            patricia_free_node((*node)->right);
-            (*node)->left = (*node)->right = NULL;
-            (*node)->prefix_len = common_leading_bits;
+
+        int min_prefix_len = (*node)->prefix_len < prefix_len ? (*node)->prefix_len : prefix_len;
+        int common_bits = count_common_prefix_bits(&(*node)->ip, &ip, min_prefix_len);
+
+        if (common_bits == (*node)->prefix_len && common_bits == prefix_len) {
+            // Exact match, node already exists
             return;
         }
-        // Descend the tree if a node exists
-        if (common_leading_bits == (*node)->prefix_len) {
-            bool next_bit = bit_at(&ip, common_leading_bits);
-            patricia_node **next_node = next_bit ? &(*node)->right : &(*node)->left;
-            if (*next_node != NULL) {
-                node = next_node;
+
+        if (prefix_len <= (*node)->prefix_len && common_bits >= prefix_len) {
+            // New prefix covers existing node
+            // Replace existing node with new node
+            patricia_free_node((*node)->left);
+            patricia_free_node((*node)->right);
+            free(*node);
+            patricia_node *new_node = malloc(sizeof(patricia_node));
+            new_node->ip = ip;
+            new_node->prefix_len = prefix_len;
+            new_node->left = new_node->right = NULL;
+            *node = new_node;
+            return;
+        }
+
+        if (prefix_len >= (*node)->prefix_len && common_bits >= (*node)->prefix_len) {
+            // Existing node covers new prefix
+            // If existing node is a leaf, do nothing
+            if ((*node)->left == NULL && (*node)->right == NULL) {
+                return;
+            } else {
+                // Continue down the tree
+                bool bit = bit_at(&ip, (*node)->prefix_len);
+                node = bit ? &(*node)->right : &(*node)->left;
                 continue;
             }
         }
-        // Split the existing node
-        patricia_node *split_node = malloc(sizeof(patricia_node));
-        memcpy(split_node, *node, sizeof(patricia_node));
-        (*node)->prefix_len = common_leading_bits;
-        bool new_bit = bit_at(&ip, common_leading_bits);
+
+        // Need to split the existing node
+        patricia_node *existing_node = *node;
+        patricia_node *parent_node = malloc(sizeof(patricia_node));
+        parent_node->ip = ip; // Use the common prefix
+        parent_node->prefix_len = common_bits;
+        parent_node->left = parent_node->right = NULL;
+
+        bool new_bit = bit_at(&ip, common_bits);
+
         patricia_node *new_node = malloc(sizeof(patricia_node));
         new_node->ip = ip;
         new_node->prefix_len = prefix_len;
         new_node->left = new_node->right = NULL;
-        if (new_bit == 0) {
-            (*node)->left = new_node;
-            (*node)->right = split_node;
+
+        if (new_bit) {
+            parent_node->right = new_node;
+            parent_node->left = existing_node;
         } else {
-            (*node)->right = new_node;
-            (*node)->left = split_node;
+            parent_node->left = new_node;
+            parent_node->right = existing_node;
         }
+
+        *node = parent_node;
         return;
     }
 }
