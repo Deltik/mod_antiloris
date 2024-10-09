@@ -240,18 +240,6 @@ void insert_range(patricia_trie *trie, struct in6_addr start, struct in6_addr en
     }
 }
 
-bool auto_convert_ipv4_to_ipv6(char *input_ip) {
-    if (strstr(input_ip, ":") == NULL) {
-        char ipv4_to_ipv6_mapper[] = "::ffff:";
-        memmove(input_ip + strlen(ipv4_to_ipv6_mapper),
-                input_ip,
-                INET6_ADDRSTRLEN - strlen(ipv4_to_ipv6_mapper) - 1);
-        memmove(input_ip, ipv4_to_ipv6_mapper, strlen(ipv4_to_ipv6_mapper));
-        return true;
-    }
-    return false;
-}
-
 bool parse_ip_address(const char *input, struct in6_addr *dest) {
     // Try parsing as IPv6 first
     if (strchr(input, ':') != NULL) {

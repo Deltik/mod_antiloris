@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ExemptIPs` allowlist insertion bug that erroneously lost track of some IP range branches when splitting a node during insertion (#4)
 
+### Changed
+
+- Removed the unused `auto_convert_ipv4_to_ipv6()` function.
+  `parse_ip_address()` already handles both IPv6 and IPv4-mapped IPv6 addresses.
+
 ## v0.8.1 (2024-09-06)
 
 ### Fixed
