@@ -33,6 +33,7 @@ PACKAGE_MANAGER=""
 OS_FAMILY=""
 APACHE_DEV_PACKAGE=""
 APACHE_PACKAGE=""
+MODULE_PATH=""
 
 usage() {
 	cat <<EOF
@@ -295,6 +296,11 @@ detect_os() {
 		APACHE_PACKAGE="apache2"
 		APACHE_DEV_PACKAGE="apache2-dev"
 		APACHE_SERVICE="apache2"
+		if command -v a2query >/dev/null 2>&1; then
+			MODULE_PATH="$(a2query -d)"
+		else
+			MODULE_PATH="/usr/lib/apache2/modules"
+		fi
 		PATH_OF_MODAVAIL_DIR='/etc/apache2/mods-available'
 		PATH_OF_MODENABL_DIR='/etc/apache2/mods-enabled'
 		PATH_OF_LOADFILE="${PATH_OF_MODAVAIL_DIR}/antiloris.load"
@@ -306,8 +312,8 @@ detect_os() {
 		APACHE_PACKAGE="httpd"
 		APACHE_DEV_PACKAGE="httpd-devel"
 		APACHE_SERVICE="httpd"
-		PATH_OF_MODAVAIL_DIR='/etc/httpd/conf.modules.d'
-		PATH_OF_LOADFILE="${PATH_OF_MODAVAIL_DIR}/10-antiloris.conf"
+		MODULE_PATH="/usr/lib64/httpd/modules"
+		PATH_OF_LOADFILE="/etc/httpd/conf.modules.d/10-antiloris.conf"
 		PATH_OF_CONFFILE="/etc/httpd/conf.d/antiloris.conf"
 		;;
 	*)
@@ -315,21 +321,16 @@ detect_os() {
 		exit 1
 		;;
 	esac
-}
 
-get_module_path() {
-	case $OS_FAMILY in
-	debian)
-		if command -v a2query >/dev/null 2>&1; then
-			MODULE_PATH="$(a2query -d)"
-		else
-			MODULE_PATH="/usr/lib/apache2/modules/"
-		fi
-		;;
-	rhel)
-		MODULE_PATH="/usr/lib64/httpd/modules"
-		;;
-	esac
+	# cPanel EasyApache 4 ships Apache under its own layout instead of the
+	# stock RHEL httpd, so override the affected paths and packages when its
+	# marker file is present.
+	if [ "$OS_FAMILY" = "rhel" ] && [ -f /etc/cpanel/ea4/is_ea4 ]; then
+		APACHE_DEV_PACKAGE="ea-apache24-devel"
+		MODULE_PATH="/usr/lib64/apache2/modules"
+		PATH_OF_LOADFILE="/etc/apache2/conf.modules.d/10-antiloris.conf"
+		PATH_OF_CONFFILE="/etc/apache2/conf.d/antiloris.conf"
+	fi
 }
 
 install_packages() {
@@ -472,7 +473,6 @@ check_binary_architecture() {
 
 install_binary_module() {
 	binary="$1"
-	get_module_path
 	module_path="${MODULE_PATH%/}/mod_antiloris.so"
 
 	if [ -f "$module_path" ]; then
@@ -482,15 +482,7 @@ install_binary_module() {
 	info "Copying module to $module_path"
 	cp "$binary" "$module_path"
 
-	# Create LoadModule directive if necessary
-	case $OS_FAMILY in
-	debian)
-		echo "LoadModule antiloris_module $module_path" >"$PATH_OF_LOADFILE"
-		;;
-	rhel)
-		echo "LoadModule antiloris_module modules/mod_antiloris.so" >"$PATH_OF_LOADFILE"
-		;;
-	esac
+	echo "LoadModule antiloris_module $module_path" >"$PATH_OF_LOADFILE"
 }
 
 download_module() {
@@ -564,14 +556,14 @@ build_module() {
 
 install_compiled_module() {
 	info "Installing compiled mod_antiloris..."
-	get_module_path
+	module_path="${MODULE_PATH%/}/mod_antiloris.so"
 	case $OS_FAMILY in
 	debian)
 		apxs -i -a -n antiloris mod_antiloris.so
 		;;
 	rhel)
-		cp mod_antiloris.so "${MODULE_PATH%/}/mod_antiloris.so"
-		echo "LoadModule antiloris_module modules/mod_antiloris.so" >"$PATH_OF_LOADFILE"
+		cp mod_antiloris.so "$module_path"
+		echo "LoadModule antiloris_module $module_path" >"$PATH_OF_LOADFILE"
 		;;
 	esac
 }
@@ -638,7 +630,6 @@ restart_apache() {
 
 uninstall() {
 	info "Uninstalling mod_antiloris..."
-	get_module_path
 	case $OS_FAMILY in
 	debian)
 		a2dismod antiloris || warn "Failed to disable mod_antiloris"
