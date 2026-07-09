@@ -7,6 +7,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.8.3 (UNRELEASED)
+
+### Fixed
+
+- `ExemptIPs` hung Apache startup in an infinite loop when an entry reached the maximum IPv6 address (e.g. `::/0`, `8000::/1`, `ffff::/16`, or a hyphenated range ending in `ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff`)
+- `ExemptIPs` silently discarded an entry whose network prefix coincided with an internal node of the PATRICIA trie, causing some allowlisted clients to be subjected to limits (e.g. in `ExemptIPs 1.2.3.0/26 1.2.3.192/26 1.2.3.0/24`, the `1.2.3.0/24` entry was lost)
+- `ExemptIPs` accepted malformed CIDR suffixes such as `0.0.0.0/256`, `::/384`, and `::/24junk`; these are now reported as configuration errors
+- Out-of-memory conditions while building the allowlist are now reported as configuration errors instead of crashing
+
+### Changed
+
+- Replaced the PATRICIA trie allowlist with a sorted interval set: entries are merged into disjoint IP address ranges at configuration time and looked up with a binary search.
+  This eliminates the CIDR block decomposition of IP address ranges (a worst-case range that previously required 505 trie nodes is now stored as a single 32-byte interval) and speeds up lookups by roughly 1.3–1.5× for prefix allowlists and up to 23× for wide hyphenated ranges.
+
+  End-to-end, the change is transparent to HTTP request handling. The following measurements come from a vanilla Debian 12 (bookworm) Apache HTTP Server version 2.4.67 running `mpm_prefork` with 150 connection slots and the same 22-entry Cloudflare `ExemptIPs` allowlist as the `= 0.8.0` benchmark (see the changelog for that version), comparing no module against `= 0.8.2` (PATRICIA trie) and `= 0.8.3` (interval set). Each latency figure is pooled from three runs of 100,000 requests at 10 concurrent connections, one connection per request, retrieving a static HTML file over loopback:
+
+  | mod_antiloris version | N      | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stddev (s) |
+  |-----------------------|--------|----------|----------|------------|----------|----------|----------|------------|
+  | _Not installed_       | 300000 | 0.000116 | 0.000209 | 0.000233   | 0.000266 | 0.012378 | 0.000247 | 0.000093   |
+  | `= 0.8.2`             | 300000 | 0.000122 | 0.000213 | 0.000238   | 0.000271 | 0.007263 | 0.000253 | 0.000100   |
+  | `= 0.8.3`             | 300000 | 0.000116 | 0.000210 | 0.000234   | 0.000265 | 0.007109 | 0.000246 | 0.000090   |
+
+  Because the per-connection check now reads the client's binary socket address instead of re-parsing the textual IP address, `= 0.8.3` matches the no-module baseline and is marginally faster than the `= 0.8.2` trie. When the connecting client is itself on the allowlist, median latency is likewise unchanged (0.000235 s).
+
+  Building the allowlist at startup is similarly unaffected. Timing configuration parsing, which is where the allowlist is constructed, over 300 iterations:
+
+  | mod_antiloris version | N   | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stddev (s) |
+  |-----------------------|-----|----------|----------|------------|----------|----------|----------|------------|
+  | _Not installed_       | 300 | 0.023663 | 0.024625 | 0.025068   | 0.025786 | 0.030545 | 0.025275 | 0.000995   |
+  | `= 0.8.2`             | 300 | 0.023279 | 0.024334 | 0.024979   | 0.025706 | 0.029395 | 0.025121 | 0.001083   |
+  | `= 0.8.3`             | 300 | 0.023675 | 0.024743 | 0.025153   | 0.025791 | 0.031299 | 0.025416 | 0.001177   |
+
+  Total Apache resident memory was unchanged as well (roughly 45 MiB idle and 57 MiB under load for all three) because both the trie and the interval set hold a 22-entry allowlist in a few hundred bytes:
+
+  | mod_antiloris version | Memory usage (idle) | Memory usage (under load) |
+  |-----------------------|---------------------|---------------------------|
+  | _Not installed_       | 45.3 MiB            | 57.7 MiB                  |
+  | `= 0.8.2`             | 45.6 MiB            | 58.0 MiB                  |
+  | `= 0.8.3`             | 44.9 MiB            | 57.2 MiB                  |
+
+- Connection checks now use the client's binary socket address directly instead of re-parsing the textual IP address on every connection
+
 ## v0.8.2 (2024-10-09)
 
 ### Fixed

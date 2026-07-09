@@ -2,7 +2,7 @@
  mod_antiloris.c - Apache module for mitigating Slowloris attacks
 
  Copyright (C) 2008-2010 Monshouwer Internet Diensten
- Copyright (C) 2019-2024 Deltik <https://www.deltik.net/>
+ Copyright (C) 2019-2026 Deltik <https://www.deltik.net/>
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@
 #include <ctype.h>
 
 #define MODULE_NAME "mod_antiloris"
-#define MODULE_VERSION "0.8.2"
+#define MODULE_VERSION "0.8.3"
 #define ANTILORIS_DEFAULT_MAX_CONN_TOTAL 30
 #define ANTILORIS_DEFAULT_MAX_CONN_READ 10
 #define ANTILORIS_DEFAULT_MAX_CONN_WRITE 10
@@ -50,6 +50,7 @@ APLOG_USE_MODULE(antiloris);
 
 #if AP_MODULE_MAGIC_AT_LEAST(20111130, 0)
 #define remote_ip client_ip
+#define remote_addr client_addr
 #endif
 
 #define ANTILORIS_COUNTER_TYPE_COUNT 3
@@ -70,7 +71,7 @@ typedef struct {
     signed long int other_limit;
 
     /* Allowlist of IP Addresses to exempt from connection limits */
-    patricia_trie *ip_exempt;
+    ip_set *ip_exempt;
 } antiloris_config;
 
 typedef struct {
@@ -86,7 +87,7 @@ static void *create_config(apr_pool_t *p, server_rec *s) {
     conf->read_limit = ANTILORIS_DEFAULT_MAX_CONN_READ;
     conf->write_limit = ANTILORIS_DEFAULT_MAX_CONN_WRITE;
     conf->other_limit = ANTILORIS_DEFAULT_MAX_CONN_OTHER;
-    conf->ip_exempt = patricia_create();
+    conf->ip_exempt = ip_set_create();
 
     return conf;
 }
@@ -147,7 +148,7 @@ static const char *ip_other_limit_config_cmd(cmd_parms *parms, void *_mconfig, c
 /** Parse ExemptIPs/WhitelistIPs/LocalIPs directive */
 static const char *exempt_ips_config_cmd(cmd_parms *parms, void *_mconfig, const char *arg) {
     int rc;
-    patricia_trie *ip_allowlist = _get_config(parms)->ip_exempt;
+    ip_set *ip_allowlist = _get_config(parms)->ip_exempt;
     const char *input_ptr = arg;
     const char *token_start;
 
@@ -187,6 +188,9 @@ static const char *exempt_ips_config_cmd(cmd_parms *parms, void *_mconfig, const
                 case ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER:
                     error_format = "Lower bound cannot be higher than upper bound in range: %s";
                     break;
+                case ANTILORIS_CONFIG_ERROR_MEMORY:
+                    error_format = "Out of memory while adding IP address: %s";
+                    break;
                 default:
                     snprintf(error_string, MAX_ERROR_STRING_LENGTH,
                              "Unknown error (%d) parsing this IP address: %s", rc, input_ip);
@@ -202,7 +206,7 @@ static const char *exempt_ips_config_cmd(cmd_parms *parms, void *_mconfig, const
 
 static apr_status_t antiloris_cleanup(void *data) {
     antiloris_config *conf = (antiloris_config *) data;
-    patricia_free(conf->ip_exempt);
+    ip_set_free(conf->ip_exempt);
     return APR_SUCCESS;
 }
 
@@ -275,6 +279,34 @@ static int _reached_ip_con_limit(const signed long int *ip_counts, antiloris_con
     return 0;
 }
 
+/**
+ * Convert an APR socket address to a 128-bit IP address, representing IPv4
+ * as IPv4-mapped IPv6 to match the allowlist encoding
+ * @param sa Peer socket address of the connection
+ * @param dest The 128-bit IP address output
+ * @return true if the address family was convertible, false if not
+ */
+static bool _sockaddr_to_in6(const apr_sockaddr_t *sa, struct in6_addr *dest) {
+    if (sa == NULL) return false;
+
+    if (sa->family == APR_INET) {
+        memset(dest->s6_addr, 0, 10);
+        dest->s6_addr[10] = 0xff;
+        dest->s6_addr[11] = 0xff;
+        memcpy(&dest->s6_addr[12], &sa->sa.sin.sin_addr, 4);
+        return true;
+    }
+
+#if APR_HAVE_IPV6
+    if (sa->family == APR_INET6) {
+        memcpy(dest, &sa->sa.sin6.sin6_addr, sizeof(*dest));
+        return true;
+    }
+#endif
+
+    return false;
+}
+
 /** Our hook at connection processing */
 static int pre_connection(conn_rec *c) {
     /* Skip suspended connections */
@@ -308,7 +340,9 @@ static int pre_connection(conn_rec *c) {
     apr_cpystrn(ws_record->client, remote_ip, sizeof(ws_record->client));
 
     /* Take exempt IPs in consideration */
-    if (is_ip_exempted(remote_ip, conf->ip_exempt)) {
+    struct in6_addr remote_in6;
+    if (_sockaddr_to_in6(c->remote_addr, &remote_in6)
+        && ip_set_contains(conf->ip_exempt, &remote_in6)) {
 #if AP_MODULE_MAGIC_AT_LEAST(20050101, 0)
         ap_log_cerror(APLOG_MARK, APLOG_DEBUG, 0, c, "Exempted from connection limit");
 #else

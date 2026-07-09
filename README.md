@@ -309,13 +309,13 @@ mod_noloris also has other drawbacks:
 * A more clever Slowloris attacker can anticipate the timer to make their attack invisible to mod_noloris.
 * Banned IPs are scanned sequentially on every request (linear time) instead of looked up in a hash table (constant time).  The bigger the banlist, the larger the performance penalty upon every request, even if the request is legitimate.
 
-Although mod_noloris in theory consumes less time and resources on every request (if the banlist is empty) due to the deferred connection scan, the savings are negligible.  On a test server with 150 connection slots, mod_antiloris configured with an allowlist of Cloudflare IP addresses had practically no effect on the response time.  The test was conducted by requesting a static HTML file 100000 times with 10 concurrent requests to download the entire file.  Data summary:
+Although mod_noloris in theory consumes less time and resources on every request (if the banlist is empty) due to the deferred connection scan, the savings are negligible.  On a test server with 150 connection slots, mod_antiloris configured with an allowlist of Cloudflare IP addresses had practically no effect on the response time.  The test was conducted by requesting a static HTML file 100,000 times with 10 concurrent requests to download the entire file, one connection per request, repeated over three runs (300,000 requests total).  Data summary:
 
 | Slowloris mitigation    | N      | min (s)  | q1 (s)   | median (s) | q3 (s)   | max (s)  | mean (s) | stddev (s) |
 |-------------------------|--------|----------|----------|------------|----------|----------|----------|------------|
-| _none_                  | 100000 | 0.000573 | 0.001035 | 0.001123   | 0.001231 | 0.008474 | 0.001170 | 0.000300   |
-| mod_antiloris `= 0.7.2` | 100000 | 0.000539 | 0.001068 | 0.001166   | 0.001287 | 0.010362 | 0.001212 | 0.000314   |
-| mod_antiloris `= 0.8.0` | 100000 | 0.000510 | 0.001054 | 0.001146   | 0.001260 | 0.011931 | 0.001197 | 0.000312   |
+| _none_                  | 300000 | 0.000116 | 0.000209 | 0.000233   | 0.000266 | 0.012378 | 0.000247 | 0.000093   |
+| mod_antiloris `= 0.8.2` | 300000 | 0.000122 | 0.000213 | 0.000238   | 0.000271 | 0.007263 | 0.000253 | 0.000100   |
+| mod_antiloris `= 0.8.3` | 300000 | 0.000116 | 0.000210 | 0.000234   | 0.000265 | 0.007109 | 0.000246 | 0.000090   |
 
 ### mod_antiloris vs. [ModSecurity](https://www.modsecurity.org/)
 

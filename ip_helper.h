@@ -1,7 +1,7 @@
 /*
- ip_helper.h - IP range ignore list implementation using a PATRICIA trie
+ ip_helper.h - IP range ignore list implementation using a sorted interval set
 
- Copyright (C) 2019-2024 Deltik <https://www.deltik.net/>
+ Copyright (C) 2019-2026 Deltik <https://www.deltik.net/>
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include <arpa/inet.h>
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,75 +30,74 @@
 #define ANTILORIS_CONFIG_ERROR_IP_CIDR 254
 #define ANTILORIS_CONFIG_ERROR_IP_IN_NETMASK 253
 #define ANTILORIS_CONFIG_ERROR_IP_RANGE_ORDER 252
+#define ANTILORIS_CONFIG_ERROR_MEMORY 251
 
 /**
- * A PATRICIA trie node. Hard-coded to support 128-bit IP addresses.
- */
-typedef struct patricia_node {
-    struct patricia_node *left, *right;
-    struct in6_addr ip;
-    int prefix_len;
-} patricia_node;
-
-/**
- * A PATRICIA trie
+ * An inclusive range of IP addresses [start, end]. Hard-coded to 128-bit IP
+ * addresses; IPv4 addresses are represented as IPv4-mapped IPv6 addresses.
  */
 typedef struct {
-    patricia_node *root;
-} patricia_trie;
+    struct in6_addr start;
+    struct in6_addr end;
+} ip_range;
 
 /**
- * Allocates a new PATRICIA trie
+ * A set of IP addresses stored as a sorted array of disjoint, non-adjacent,
+ * inclusive ranges. The set is built at configuration time; lookups do not
+ * modify it, so concurrent readers are safe.
  */
-patricia_trie* patricia_create();
+typedef struct {
+    ip_range *ranges;
+    size_t count;
+    size_t capacity;
+} ip_set;
 
 /**
- * Free a PATRICIA trie node and all of its children
- * @param node The node to free
+ * Allocates a new empty IP set
+ * @return The new set, or NULL if out of memory
  */
-void patricia_free_node(patricia_node *node);
+ip_set *ip_set_create(void);
 
 /**
- * Free a PATRICIA trie from the root node
- * @param trie The trie to free
+ * Free an IP set and its ranges
+ * @param set The set to free
  */
-void patricia_free(patricia_trie *trie);
+void ip_set_free(ip_set *set);
 
 /**
- * Insert an IP address of a given prefix length into the PATRICIA trie
- * @param trie The trie to insert into
- * @param ip The IP address to insert
- * @param prefix_len The prefix length of the IP address
+ * Insert the inclusive IP address range [start, end] into the set, merging it
+ * with any overlapping or adjacent ranges already present
+ * @param set The set to insert into
+ * @param start The first IP address of the range
+ * @param end The last IP address of the range (must not be below start)
+ * @return 0 if successful, error code if not successful
  */
-void patricia_insert(patricia_trie *trie, struct in6_addr ip, int prefix_len);
+int ip_set_insert(ip_set *set, struct in6_addr start, struct in6_addr end);
 
 /**
- * Check if an IP address is in the PATRICIA trie
- * @param trie The trie to check
+ * Check if an IP address is in the set
+ * @param set The set to check
  * @param ip The IP address to check
- * @return 1 if the IP address is in the trie, 0 if not
+ * @return true if the IP address is in the set, false if not
  */
-int patricia_contains(patricia_trie *trie, struct in6_addr ip);
-
-int bit_at(const struct in6_addr *ip, int bit);
-
-void insert_range(patricia_trie *trie, struct in6_addr start, struct in6_addr end);
+bool ip_set_contains(const ip_set *set, const struct in6_addr *ip);
 
 /**
- * Adds the IP address, IP address range, or a CIDR range to the PATRICIA trie
- * @param allowlist The PATRICIA trie to add to
+ * Parse a textual IPv4 or IPv6 address into a 128-bit IP address.
+ * IPv4 addresses are converted to IPv4-mapped IPv6 addresses.
+ * @param input The textual IP address
+ * @param dest The parsed 128-bit IP address
+ * @return true if the input was parsed successfully, false if not
+ */
+bool parse_ip_address(const char *input, struct in6_addr *dest);
+
+/**
+ * Adds an IP address, IP address range, or CIDR range to the IP set
+ * @param allowlist The IP set to add to
  * @param input A single IP address with an optional CIDR suffix or a hyphenated IP address range. Can be IPv4 or IPv6.
  * @return 0 if successful, error code if not successful
  */
-int exempt_ip(patricia_trie *allowlist, const char *input);
-
-/**
- * Check if the IP address is present in the PATRICIA trie
- * @param ip_input A single IPv4 or IPv6 address
- * @param allowlist The PATRICIA trie to check
- * @return true if the provided IP address is present in the PATRICIA trie, false if not
- */
-bool is_ip_exempted(const char *ip_input, patricia_trie *allowlist);
+int exempt_ip(ip_set *allowlist, const char *input);
 
 #define ANTILORIS_IP_HELPER_H
 
